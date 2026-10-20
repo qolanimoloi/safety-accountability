@@ -45,6 +45,14 @@ CSRF_TRUSTED_ORIGINS = [
     "https://*.trycloudflare.com",
 ]
 
+# The iPhone/web version of the app is hosted on Netlify and calls this API
+# from the browser, so the browser needs permission (CORS) to do that.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://[a-z0-9-]+\.netlify\.app$",
+    r"^http://localhost:\d+$",
+    r"^http://127\.0\.0\.1:\d+$",
+]
+
 # PythonAnywhere puts HTTPS in front of Django. This tells Django the request
 # was really https, so absolute URLs (profile photos, evidence files) come out
 # as https:// instead of http:// (which Android refuses to load).
@@ -68,6 +76,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "widget_tweaks",
+    "corsheaders",
     # our apps
     "accounts",
     "dashboard",
@@ -114,6 +123,7 @@ REST_FRAMEWORK = {
 }
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

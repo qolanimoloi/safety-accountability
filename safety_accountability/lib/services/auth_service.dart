@@ -16,7 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///   with `ipconfig`, look for "IPv4 Address" under your Wi-Fi adapter).
 /// Change this one constant when you switch between testing setups.
 class AuthService {
-  static const String baseUrl = 'https://java-penny-legs-understanding.trycloudflare.com';
+    static const String baseUrl = 'https://safetyaccountability.eu.pythonanywhere.com';
 
   /// The "Web application" OAuth client id from Google Cloud Console. Google
   /// uses it to issue an ID token that our Django backend can verify. This is
