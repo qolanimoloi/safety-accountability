@@ -1,0 +1,49 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Passenger Logs{% endblock %}
+{% block content %}
+  <h3 class="fw-bold mb-1">Passenger Logs</h3>
+  <p class="text-muted mb-4">Passengers drivers have logged before starting a trip.</p>
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-auto">
+      <select name="status" class="form-select">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto"><button class="btn btn-outline-primary">Filter</button></div>
+  </form>
+
+  <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Driver</th>
+          <th>Passenger</th>
+          <th>PIN</th>
+          <th>Route</th>
+          <th>Status</th>
+          <th class="pe-3">Logged</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+          <tr>
+            <td class="ps-3">{% if log.driver %}{{ log.driver.full_name|default:log.driver.email }}{% else %}Unknown{% endif %}</td>
+            <td>{{ log.passenger_name }}{% if log.passenger_count > 1 %} <span class="text-muted">(+{{ log.passenger_count|add:"-1" }})</span>{% endif %}</td>
+            <td class="font-monospace">{{ log.trip_pin }}</td>
+            <td class="small text-muted">{{ log.pickup_location|default:"—" }} → {{ log.destination_location|default:"—" }}</td>
+            <td>
+              {% if log.status == "active" %}<span class="badge bg-success-subtle text-success">Active</span>
+              {% else %}<span class="badge bg-secondary">Completed</span>{% endif %}
+            </td>
+            <td class="pe-3">{{ log.logged_at|date:"d M Y, H:i" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No passenger logs yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

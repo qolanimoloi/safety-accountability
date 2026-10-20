@@ -1,0 +1,34 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Driver Communities{% endblock %}
+{% block content %}
+  <h3 class="fw-bold mb-1">Driver Communities</h3>
+  <p class="text-muted mb-4">Communities drivers have created or joined.</p>
+  <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Name</th>
+          <th>Area</th>
+          <th>Members</th>
+          <th>Created</th>
+          <th class="pe-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for community in communities %}
+          <tr>
+            <td class="ps-3">{{ community.name }}</td>
+            <td>{{ community.area|default:"—" }}</td>
+            <td>{{ community.members.count }}</td>
+            <td>{{ community.created_at|date:"d M Y" }}</td>
+            <td class="pe-3 text-end">
+              <a href="{% url 'dashboard:ehailing_community_detail' community.pk %}" class="btn btn-sm btn-outline-secondary">View</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No communities yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

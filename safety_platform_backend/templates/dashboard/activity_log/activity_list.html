@@ -1,0 +1,54 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Activity Log{% endblock %}
+{% block extra_head %}<meta http-equiv="refresh" content="30">{% endblock %}
+{% block content %}
+  <div class="mb-3">
+    <h3 class="fw-bold mb-1"><i class="bi bi-journal-text me-2"></i>Escalated activities</h3>
+    <p class="text-muted mb-0">Activities stay private between a person and their emergency contacts. They only appear here when a contact reports that the person did not return. This page refreshes every 30 seconds.</p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted small">Open cases</div><div class="stat-value {% if open_total %}text-danger{% endif %}">{{ open_total }}</div></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted small">Not yet acknowledged</div><div class="stat-value {% if new_total %}text-danger{% endif %}">{{ new_total }}</div></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted small">Authorities notified</div><div class="stat-value">{{ authorities_total }}</div></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted small">Closed</div><div class="stat-value text-success">{{ closed_total }}</div></div></div>
+  </div>
+
+  <div class="card p-3 mb-3">
+    <form method="get" class="row g-2">
+      <div class="col-md-3">
+        <select name="state" class="form-select">
+          <option value="open" {% if state == 'open' %}selected{% endif %}>Open only</option>
+          <option value="closed" {% if state == 'closed' %}selected{% endif %}>Closed only</option>
+          <option value="all" {% if state == 'all' %}selected{% endif %}>All</option>
+        </select>
+      </div>
+      <div class="col-md-7"><input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search person, email, location"></div>
+      <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Filter</button></div>
+    </form>
+  </div>
+
+  <div class="card p-3">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead><tr><th>Person</th><th>Activity</th><th>Where</th><th>Overdue by</th><th>Escalated by</th><th>Sent</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for a in activities %}
+            <tr class="{% if a.admin_status == 'new' %}table-danger{% endif %}">
+              <td class="fw-semibold">{{ a.user.full_name|default:a.user.email|default:"Unknown" }}{% if a.user.phone_number %}<div class="small text-muted">{{ a.user.phone_number }}</div>{% endif %}</td>
+              <td>{{ a.get_activity_type_display }}</td>
+              <td class="small">{{ a.location }}</td>
+              <td class="small">{% if a.status == 'completed' %}<span class="text-muted">closed</span>{% else %}{{ a.return_deadline|timesince }}{% endif %}</td>
+              <td class="small">{{ a.escalated_by.full_name|default:a.escalated_by.email|default:"-" }}</td>
+              <td class="small">{{ a.escalated_at|timesince }} ago</td>
+              <td><span class="badge bg-{{ a.admin_status_badge }}">{{ a.get_admin_status_display }}</span></td>
+              <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:activity_detail' a.pk %}">Respond</a></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">No escalated activities. All clear.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

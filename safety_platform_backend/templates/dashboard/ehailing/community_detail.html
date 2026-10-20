@@ -1,0 +1,60 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ community.name }}{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:ehailing_community_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to communities</a>
+  <h3 class="fw-bold mt-2 mb-1">{{ community.name }}</h3>
+  <p class="text-muted mb-4">{{ community.area|default:"No area set" }} · {{ members|length }} members</p>
+
+  <div class="row g-4">
+    <div class="col-md-6">
+      <div class="card p-4 mb-3">
+        <h6 class="fw-bold mb-3">Members</h6>
+        {% if members %}
+          <ul class="list-unstyled mb-0">
+            {% for m in members %}
+              <li class="mb-1">{{ m.full_name|default:m.email }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">No members yet.</p>
+        {% endif %}
+      </div>
+
+      <div class="card p-4">
+        <h6 class="fw-bold mb-3">Passenger logs tied to this community</h6>
+        {% if passenger_logs %}
+          <ul class="list-unstyled mb-0">
+            {% for log in passenger_logs %}
+              <li class="mb-2 small">
+                <strong>{{ log.passenger_name }}</strong> · logged by {{ log.driver.full_name|default:log.driver.email }} · {{ log.logged_at|date:"d M, H:i" }}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">None yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card p-4">
+        <h6 class="fw-bold mb-3">Community feed</h6>
+        {% if posts %}
+          <div class="d-flex flex-column gap-3">
+            {% for post in posts %}
+              <div class="border-bottom pb-2">
+                <div class="d-flex justify-content-between">
+                  <strong class="small">{{ post.driver.full_name|default:post.driver.email }}</strong>
+                  <span class="text-muted small">{{ post.created_at|date:"d M, H:i" }}</span>
+                </div>
+                <p class="mb-0 small">{{ post.message }}</p>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted mb-0">No posts yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

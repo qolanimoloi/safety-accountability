@@ -1,0 +1,92 @@
+{% extends "dashboard/base.html" %}
+{% load l10n %}
+{% block title %}{{ incident.reference }}{% endblock %}
+{% block content %}
+  <a href="{% url 'events_admin:incident_list' %}" class="text-decoration-none small"><i class="bi bi-arrow-left"></i> Event alerts</a>
+  <div class="d-flex justify-content-between align-items-center mt-2 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1">{{ incident.get_kind_display }}</h3>
+      <span class="badge bg-{{ incident.severity_badge }}">{{ incident.get_severity_display }}</span>
+      <span class="badge bg-{{ incident.status_badge }}">{{ incident.get_status_display }}</span>
+      <span class="text-muted small ms-2">{{ incident.reference }}</span>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold">What was reported</h6>
+        <p style="white-space: pre-wrap;">{{ incident.description|default:"No description given." }}</p>
+        <hr>
+        <div class="small"><i class="bi bi-calendar-event me-2"></i><strong>Event:</strong> <a href="{% url 'events_admin:detail' incident.event.pk %}">{{ incident.event.title }}</a></div>
+        <div class="small mt-1"><i class="bi bi-geo-alt me-2"></i><strong>Where:</strong> {{ incident.location_description|default:"Not described" }}</div>
+        {% if incident.latitude and incident.longitude %}
+          <a class="btn btn-sm btn-outline-primary mt-2" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ incident.latitude|unlocalize }},{{ incident.longitude|unlocalize }}"><i class="bi bi-map me-1"></i>Open location in Google Maps</a>
+        {% else %}
+          <div class="small text-muted mt-1">No GPS location attached.</div>
+        {% endif %}
+        <div class="small mt-2"><i class="bi bi-person me-2"></i><strong>From:</strong> {{ incident.reporter_label }}{% if incident.is_anonymous %} <span class="text-muted">(sent anonymously, the sender is not stored)</span>{% endif %}</div>
+        <div class="small mt-1"><i class="bi bi-clock me-2"></i><strong>Received:</strong> {{ incident.created_at|date:"D j M Y, H:i:s" }} ({{ incident.created_at|timesince }} ago)</div>
+        <hr>
+        <div class="small"><strong>Event host:</strong> {{ incident.event.host.full_name|default:incident.event.host.email|default:"Unknown" }} · {{ incident.event.host_phone }}</div>
+        {% if incident.event.security_head_phone %}<div class="small"><strong>Head of security:</strong> {{ incident.event.security_head_name|default:"-" }} · {{ incident.event.security_head_phone }}</div>{% endif %}
+      </div>
+
+      {% with files=incident.evidence.all %}
+        <div class="card p-3">
+          <h6 class="fw-bold"><i class="bi bi-paperclip me-1"></i>Evidence ({{ files|length }})</h6>
+          {% if files %}
+            <div class="row g-3">
+              {% for e in files %}
+                <div class="col-sm-6">
+                  <div class="border rounded p-2 h-100">
+                    {% if e.file_kind == "image" %}
+                      <a href="{{ e.file.url }}" target="_blank" rel="noopener"><img src="{{ e.file.url }}" class="img-fluid rounded" alt="Evidence photo"></a>
+                    {% elif e.file_kind == "video" %}
+                      <video src="{{ e.file.url }}" controls preload="metadata" class="w-100 rounded"></video>
+                    {% elif e.file_kind == "audio" %}
+                      <audio src="{{ e.file.url }}" controls class="w-100"></audio>
+                    {% else %}
+                      <a href="{{ e.file.url }}" target="_blank" rel="noopener" class="text-decoration-none d-flex align-items-center gap-2"><i class="bi bi-file-earmark-text fs-2"></i><span>Open document</span></a>
+                    {% endif %}
+                    <div class="small text-muted mt-2">
+                      {{ e.original_filename|default:"Attachment" }} · {{ e.size_bytes|filesizeformat }}
+                      · <a href="{{ e.file.url }}" target="_blank" rel="noopener">Open</a>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+            {% if incident.is_anonymous %}
+              <div class="small text-muted mt-3">This report was sent anonymously. File names were not kept, but photos and videos can still show people or places.</div>
+            {% endif %}
+          {% else %}
+            <div class="small text-muted">No files were attached.</div>
+          {% endif %}
+        </div>
+      {% endwith %}
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold">Respond</h6>
+        <form method="post">
+          {% csrf_token %}
+          <textarea name="notes" class="form-control mb-3" rows="3" placeholder="Add a note (optional), e.g. 'Guard dispatched to the north gate'"></textarea>
+          <div class="d-grid gap-2">
+            <button class="btn btn-warning" name="status" value="acknowledged">Acknowledge</button>
+            <button class="btn btn-primary" name="status" value="responding">Responding</button>
+            <button class="btn btn-success" name="status" value="resolved">Mark resolved</button>
+            <button class="btn btn-outline-secondary" name="status" value="false_alarm">False alarm</button>
+            <button class="btn btn-link btn-sm" type="submit">Only save note</button>
+          </div>
+        </form>
+        {% if incident.handled_by %}<div class="small text-muted mt-3">Last handled by {{ incident.handled_by.full_name|default:incident.handled_by.email }}.</div>{% endif %}
+      </div>
+      <div class="card p-3">
+        <h6 class="fw-bold">Notes</h6>
+        {% if incident.admin_notes %}<div class="small" style="white-space: pre-wrap;">{{ incident.admin_notes }}</div>{% else %}<div class="small text-muted">No notes yet.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

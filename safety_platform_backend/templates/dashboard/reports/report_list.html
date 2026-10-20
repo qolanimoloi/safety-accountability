@@ -1,0 +1,99 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Anonymous Reports{% endblock %}
+{% block content %}
+  <h3 class="fw-bold mb-1">Anonymous Reports</h3>
+  <p class="text-muted mb-4">Reports submitted anonymously through the app — no submitter identity is ever stored.</p>
+
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-auto">
+      <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Tracking code">
+    </div>
+    <div class="col-auto">
+      <select name="status" class="form-select">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <select name="category" class="form-select">
+        <option value="">All categories</option>
+        {% for value, label in category_choices %}
+          <option value="{{ value }}" {% if value == selected_category %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <select name="urgency" class="form-select">
+        <option value="">All urgency</option>
+        {% for value, label in urgency_choices %}
+          <option value="{{ value }}" {% if value == selected_urgency %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-primary">Filter</button>
+    </div>
+  </form>
+
+    <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Tracking code</th>
+          <th>Category</th>
+          <th>Location</th>
+          <th>Urgency</th>
+          <th>Status</th>
+          <th>Flags</th>
+          <th>Evidence</th>
+          <th>Submitted</th>
+          <th class="pe-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for report in reports %}
+          <tr>
+            <td class="ps-3 font-monospace">{{ report.tracking_code }}</td>
+            <td>{{ report.get_category_display }}</td>
+            <td>{{ report.location|default:"Not specified" }}</td>
+            <td>
+              {% if report.urgency == "critical" %}<span class="badge bg-danger">Critical</span>
+              {% elif report.urgency == "high" %}<span class="badge bg-warning text-dark">High</span>
+              {% elif report.urgency == "medium" %}<span class="badge bg-info text-dark">Medium</span>
+              {% else %}<span class="badge bg-secondary">Low</span>{% endif %}
+            </td>
+            <td>
+              {% if report.status == "resolved" %}<span class="badge bg-success-subtle text-success">Resolved</span>
+              {% elif report.status == "under_investigation" %}<span class="badge bg-primary-subtle text-primary">Under Investigation</span>
+              {% else %}<span class="badge bg-warning-subtle text-warning-emphasis">Submitted</span>{% endif %}
+            </td>
+            <td>
+              {% if report.requires_immediate_action %}<span class="badge bg-danger d-block mb-1">Life-threatening</span>{% endif %}
+              {% if report.involves_minors %}<span class="badge bg-danger d-block">Involves minors</span>{% endif %}
+              {% if not report.requires_immediate_action and not report.involves_minors %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% with report.evidence.all as files %}
+                {% if files %}
+                  <span class="badge bg-light text-dark border">
+                    <i class="bi bi-paperclip"></i> {{ files|length }}
+                  </span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td>{{ report.created_at|date:"d M Y, H:i" }}</td>
+            <td class="pe-3 text-end">
+              <a href="{% url 'dashboard:report_detail' report.pk %}" class="btn btn-sm btn-outline-secondary">Review</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="9" class="text-center text-muted py-4">No reports match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

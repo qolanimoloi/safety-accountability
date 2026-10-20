@@ -1,0 +1,72 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ emergency.reference }}{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:emergency_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to emergencies</a>
+
+  <div class="d-flex justify-content-between align-items-start mt-2 mb-4">
+    <div>
+      <h3 class="fw-bold mb-1 font-monospace">{{ emergency.reference }}</h3>
+      <span class="text-muted">{{ emergency.get_incident_type_display }} · reported {{ emergency.created_at|date:"d M Y, H:i:s" }}</span>
+    </div>
+    {% if emergency.is_overdue %}
+      <span class="badge bg-danger fs-6">Overdue — response window passed</span>
+    {% endif %}
+  </div>
+
+  <div class="row g-4">
+    <div class="col-md-7">
+      <div class="card p-4 mb-3">
+        <h6 class="fw-bold mb-3">Incident details</h6>
+        <dl class="row mb-0">
+          <dt class="col-sm-4 text-muted fw-normal">Reported by</dt>
+          <dd class="col-sm-8">
+            {{ emergency.user.full_name|default:"Unknown" }}
+            {% if emergency.user %}<br><span class="text-muted small">{{ emergency.user.email }} · {{ emergency.user.phone_number|default:"no phone on file" }}</span>{% endif %}
+          </dd>
+          <dt class="col-sm-4 text-muted fw-normal">Location</dt>
+          <dd class="col-sm-8">
+            {% if emergency.latitude and emergency.longitude %}
+              <a href="https://www.google.com/maps?q={{ emergency.latitude }},{{ emergency.longitude }}" target="_blank">{{ emergency.latitude }}, {{ emergency.longitude }}</a>
+            {% else %}
+              {{ emergency.location_description|default:"Not provided" }}
+            {% endif %}
+          </dd>
+          <dt class="col-sm-4 text-muted fw-normal">Response deadline</dt>
+          <dd class="col-sm-8">{{ emergency.response_deadline|date:"d M Y, H:i:s" }}</dd>
+          <dt class="col-sm-4 text-muted fw-normal">Responded at</dt>
+          <dd class="col-sm-8">{{ emergency.responded_at|date:"d M Y, H:i:s"|default:"Not yet" }}</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="col-md-5">
+      <div class="card p-4">
+        <h6 class="fw-bold mb-3">Response</h6>
+        <form method="post">
+          {% csrf_token %}
+          {% if not emergency.responded_at %}
+            <button type="submit" name="action" value="respond" class="btn btn-danger w-100 mb-3">
+              <i class="bi bi-lightning-fill me-1"></i> Mark as responded now
+            </button>
+          {% else %}
+            <div class="alert alert-success py-2 mb-3">Responded at {{ emergency.responded_at|date:"H:i:s" }}.</div>
+          {% endif %}
+
+          <div class="mb-3">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+              {% for value, label in emergency.STATUS_CHOICES %}
+                <option value="{{ value }}" {% if value == emergency.status %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Response notes</label>
+            <textarea name="response_notes" rows="5" class="form-control">{{ emergency.response_notes }}</textarea>
+          </div>
+          <button type="submit" class="btn btn-primary w-100" style="background:#667EEA; border:none;">Save</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

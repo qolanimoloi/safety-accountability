@@ -1,0 +1,30 @@
+{% extends "dashboard/base.html" %}
+{% block title %}New News Post{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:news_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to News & Reports</a>
+  <h3 class="fw-bold mt-2 mb-1">Publish to All Users</h3>
+  <p class="text-muted mb-4">This appears immediately in every user's Reports & News feed.</p>
+
+  <div class="card p-4" style="max-width: 640px;">
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">Category</label>
+        <select name="category" class="form-select">
+          {% for value, label in category_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Title</label>
+        <input type="text" name="title" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Body</label>
+        <textarea name="body" rows="6" class="form-control" required></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary w-100" style="background:#667EEA; border:none;">Publish</button>
+    </form>
+  </div>
+{% endblock %}

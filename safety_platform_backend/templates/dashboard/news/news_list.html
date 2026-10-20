@@ -1,0 +1,107 @@
+{% extends "dashboard/base.html" %}
+{% block title %}News & Reports{% endblock %}
+
+{% block extra_head %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+    <h3 class="fw-bold mb-0">News & Reports</h3>
+    <a href="{% url 'dashboard:news_create' %}" class="btn btn-primary" style="background:#667EEA; border:none;">
+      <i class="bi bi-plus-lg"></i> New Post
+    </a>
+  </div>
+  <p class="text-muted mb-4">Stats, alerts and safety tips broadcast to every app user's Reports & News feed.</p>
+
+  <div class="card p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h6 class="fw-bold mb-0">Report Activity — Week vs Month</h6>
+      <div class="small text-muted">
+        Avg response: {{ week_stats.response }} (week) &middot; {{ month_stats.response }} (month)
+      </div>
+    </div>
+    <div style="position: relative; height: 300px;">
+      <canvas id="statsChart"></canvas>
+    </div>
+  </div>
+
+  <form class="row g-2 align-items-center mb-3" method="get">
+    <div class="col-auto">
+      <select name="category" class="form-select">
+        <option value="">All categories</option>
+        {% for value, label in category_choices %}
+          <option value="{{ value }}" {% if value == selected_category %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-primary">Filter</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Category</th>
+          <th>Title</th>
+          <th>Posted by</th>
+          <th>Posted</th>
+          <th class="pe-3 text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for post in posts %}
+          <tr>
+            <td class="ps-3">
+              {% if post.category == "alert" %}<span class="badge bg-danger">Alert</span>
+              {% elif post.category == "tip" %}<span class="badge bg-success">Safety Tip</span>
+              {% else %}<span class="badge bg-primary">Stats</span>{% endif %}
+            </td>
+            <td>{{ post.title }}</td>
+            <td>{% if post.posted_by %}{{ post.posted_by.full_name|default:post.posted_by.email }}{% else %}Admin{% endif %}</td>
+            <td>{{ post.created_at|date:"d M Y, H:i" }}</td>
+            <td class="pe-3 text-end">
+              <form method="post" action="{% url 'dashboard:news_delete' post.pk %}" class="d-inline" onsubmit="return confirm('Remove this post from everyone\'s feed?');">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-danger">Remove</button>
+              </form>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No posts yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    new Chart(document.getElementById('statsChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Total Reports', 'Resolved', 'Investigating'],
+        datasets: [
+          {
+            label: 'This Week',
+            data: [{{ week_stats.total }}, {{ week_stats.resolved }}, {{ week_stats.investigating }}],
+            backgroundColor: '#667EEA',
+            borderRadius: 6,
+          },
+          {
+            label: 'This Month',
+            data: [{{ month_stats.total }}, {{ month_stats.resolved }}, {{ month_stats.investigating }}],
+            backgroundColor: '#C7D2FE',
+            borderRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top' } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+  </script>
+{% endblock %}

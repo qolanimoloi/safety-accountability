@@ -1,0 +1,77 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Escalated activity{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:activity_list' %}" class="text-decoration-none small"><i class="bi bi-arrow-left"></i> Escalated activities</a>
+  <div class="mt-2 mb-3">
+    <h3 class="fw-bold mb-1">{{ activity.user.full_name|default:activity.user.email|default:"Unknown person" }} did not return</h3>
+    <span class="badge bg-{{ activity.admin_status_badge }}">{{ activity.get_admin_status_display }}</span>
+    <span class="text-muted small ms-2">{{ activity.get_activity_type_display }}</span>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold">What they logged</h6>
+        <div class="small"><i class="bi bi-calendar-event me-2"></i><strong>Started:</strong> {{ activity.scheduled_at|date:"D j M Y, H:i" }}</div>
+        <div class="small mt-1"><i class="bi bi-clock me-2"></i><strong>Expected back:</strong> {% if activity.expected_return_at %}{{ activity.expected_return_at|date:"D j M Y, H:i" }}{% else %}Not set (treated as overdue after {{ activity.return_deadline|date:"H:i" }}){% endif %}</div>
+        <div class="small mt-1"><i class="bi bi-geo-alt me-2"></i><strong>Where:</strong> {{ activity.location }}
+          <a class="ms-2" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ activity.location|urlencode }}">Open in Google Maps</a>
+        </div>
+        {% if activity.notes %}<hr><div class="small" style="white-space: pre-wrap;"><strong>Notes:</strong> {{ activity.notes }}</div>{% endif %}
+      </div>
+
+      {% if activity.person_name or activity.person_photo %}
+        <div class="card p-3 mb-3">
+          <h6 class="fw-bold">Person they were meeting</h6>
+          {% if activity.person_name %}<div class="small mb-2">{{ activity.person_name }}</div>{% endif %}
+          {% if activity.person_photo %}<img src="{{ activity.person_photo.url }}" alt="Person" class="img-fluid rounded" style="max-height: 280px;">{% endif %}
+        </div>
+      {% endif %}
+
+      {% if activity.car_reg or activity.car_photo %}
+        <div class="card p-3 mb-3">
+          <h6 class="fw-bold">Vehicle</h6>
+          {% if activity.car_reg %}<div class="small mb-2">Registration: <strong>{{ activity.car_reg }}</strong></div>{% endif %}
+          {% if activity.car_photo %}<img src="{{ activity.car_photo.url }}" alt="Vehicle" class="img-fluid rounded" style="max-height: 280px;">{% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold">Who to contact</h6>
+        <div class="small"><strong>The person:</strong> {{ activity.user.full_name|default:activity.user.email|default:"Unknown" }}{% if activity.user.phone_number %} · <a href="tel:{{ activity.user.phone_number }}">{{ activity.user.phone_number }}</a>{% endif %}</div>
+        <div class="small mt-2"><strong>Escalated by:</strong> {{ activity.escalated_by.full_name|default:activity.escalated_by.email|default:"Unknown" }}{% if activity.escalated_by.phone_number %} · <a href="tel:{{ activity.escalated_by.phone_number }}">{{ activity.escalated_by.phone_number }}</a>{% endif %}</div>
+        <div class="small text-muted">{{ activity.escalated_at|date:"D j M Y, H:i" }} ({{ activity.escalated_at|timesince }} ago)</div>
+        {% if activity.escalation_note %}<div class="small mt-2" style="white-space: pre-wrap;"><strong>Their note:</strong> {{ activity.escalation_note }}</div>{% endif %}
+        {% if contacts %}
+          <hr>
+          <div class="small fw-semibold mb-1">Their emergency contacts</div>
+          {% for c in contacts %}<div class="small">{{ c.name }} ({{ c.relationship }}) · <a href="tel:{{ c.phone_number }}">{{ c.phone_number }}</a></div>{% endfor %}
+        {% endif %}
+      </div>
+
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold">Respond</h6>
+        <form method="post">
+          {% csrf_token %}
+          <textarea name="notes" class="form-control mb-3" rows="3" placeholder="Add a note (optional), e.g. 'Called SAPS, case number ...'"></textarea>
+          <div class="d-grid gap-2">
+            <button class="btn btn-warning" name="status" value="acknowledged">Acknowledge</button>
+            <button class="btn btn-primary" name="status" value="responding">Responding</button>
+            <button class="btn btn-dark" name="status" value="authorities">Authorities notified</button>
+            <button class="btn btn-success" name="status" value="resolved">Resolved: person is safe</button>
+            <button class="btn btn-outline-secondary" name="status" value="false_alarm">False alarm</button>
+            <button class="btn btn-link btn-sm" type="submit">Only save note</button>
+          </div>
+        </form>
+        {% if activity.admin_handled_by %}<div class="small text-muted mt-3">Last handled by {{ activity.admin_handled_by.full_name|default:activity.admin_handled_by.email }}.</div>{% endif %}
+      </div>
+
+      <div class="card p-3">
+        <h6 class="fw-bold">Notes</h6>
+        {% if activity.admin_notes %}<div class="small" style="white-space: pre-wrap;">{{ activity.admin_notes }}</div>{% else %}<div class="small text-muted">No notes yet.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

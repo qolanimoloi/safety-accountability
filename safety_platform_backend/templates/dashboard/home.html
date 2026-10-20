@@ -1,0 +1,59 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+  <h3 class="fw-bold mb-1">Overview</h3>
+  <p class="text-muted mb-4">Welcome back, {{ request.user.full_name|default:request.user.email }}.</p>
+
+  <div class="row g-3">
+    <div class="col-md-3">
+      <div class="card p-3">
+        <div class="text-muted small">Total accounts</div>
+        <div class="stat-value">{{ total_accounts }}</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card p-3">
+        <div class="text-muted small">Active accounts</div>
+        <div class="stat-value text-success">{{ active_accounts }}</div>
+      </div>
+    </div>
+        <div class="col-md-3">
+      <a href="{% url 'dashboard:report_list' %}" class="text-decoration-none">
+        <div class="card p-3">
+          <div class="text-muted small">Open anonymous reports</div>
+          <div class="stat-value {% if critical_reports %}text-danger{% else %}text-dark{% endif %}">{{ open_reports }}</div>
+          <div class="small text-muted">{{ total_reports }} total{% if critical_reports %} · {{ critical_reports }} critical{% endif %}</div>
+        </div>
+      </a>
+    </div>
+        <div class="col-md-3">
+        <div class="col-md-3">
+      <a href="{% url 'dashboard:emergency_list' %}" class="text-decoration-none">
+        <div class="card p-3">
+          <div class="text-muted small">Open emergencies</div>
+          <div class="stat-value {% if overdue_emergencies %}text-danger{% else %}text-dark{% endif %}">{{ open_emergencies }}</div>
+          <div class="small text-muted">{% if overdue_emergencies %}{{ overdue_emergencies }} overdue — no response yet{% else %}none overdue{% endif %}</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-md-3">
+      <a href="{% url 'dashboard:post_list' %}" class="text-decoration-none">
+        <div class="card p-3">
+          <div class="text-muted small">Community posts</div>
+          <div class="stat-value">{{ total_posts }}</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-md-3">
+      <a href="{% url 'dashboard:post_list' %}?reported_only=1" class="text-decoration-none">
+        <div class="card p-3">
+          <div class="text-muted small">Unresolved post reports</div>
+          <div class="stat-value {% if unresolved_post_reports %}text-danger{% else %}text-dark{% endif %}">{{ unresolved_post_reports }}</div>
+        </div>
+      </a>
+    </div>
+  </div>
+{% endblock %}

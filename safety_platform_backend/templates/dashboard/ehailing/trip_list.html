@@ -1,0 +1,49 @@
+{% extends "dashboard/base.html" %}
+{% block title %}E-Hailing Trips{% endblock %}
+{% block content %}
+  <h3 class="fw-bold mb-1">E-Hailing Trips</h3>
+  <p class="text-muted mb-4">Trips passengers have shared with their emergency contacts.</p>
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-auto">
+      <select name="status" class="form-select">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto"><button class="btn btn-outline-primary">Filter</button></div>
+  </form>
+
+  <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Passenger</th>
+          <th>Service</th>
+          <th>Driver / Vehicle</th>
+          <th>Route</th>
+          <th>Status</th>
+          <th class="pe-3">Started</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for trip in trips %}
+          <tr>
+            <td class="ps-3">{% if trip.passenger %}{{ trip.passenger.full_name|default:trip.passenger.email }}{% else %}Unknown{% endif %}</td>
+            <td>{{ trip.get_service_display }}</td>
+            <td>{{ trip.driver_name }} · {{ trip.vehicle_reg }}</td>
+            <td class="small text-muted">{{ trip.pickup_location|default:"—" }} → {{ trip.destination_location|default:"—" }}</td>
+            <td>
+              {% if trip.status == "active" %}<span class="badge bg-success-subtle text-success">Active</span>
+              {% else %}<span class="badge bg-secondary">Ended</span>{% endif %}
+            </td>
+            <td class="pe-3">{{ trip.started_at|date:"d M Y, H:i" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No trips yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

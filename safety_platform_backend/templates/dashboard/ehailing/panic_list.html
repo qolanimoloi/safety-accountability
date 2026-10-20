@@ -1,0 +1,70 @@
+{% extends "dashboard/base.html" %}
+{% block title %}E-Hailing Panic Alerts{% endblock %}
+{% block content %}
+  <h3 class="fw-bold mb-1">E-Hailing Panic Alerts</h3>
+  <p class="text-muted mb-4">Panic alerts triggered from the passenger or driver side of E-Hailing.</p>
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-auto">
+      <select name="status" class="form-select">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <select name="role" class="form-select">
+        <option value="">All roles</option>
+        {% for value, label in role_choices %}
+          <option value="{{ value }}" {% if value == selected_role %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-primary">Filter</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Role</th>
+          <th>Triggered by</th>
+          <th>Context</th>
+          <th>Status</th>
+          <th>Triggered</th>
+          <th class="pe-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alert in alerts %}
+          <tr class="{% if alert.is_overdue %}table-danger{% endif %}">
+            <td class="ps-3">
+              {% if alert.role == "driver" %}<span class="badge bg-dark">Driver</span>{% else %}<span class="badge bg-primary">Passenger</span>{% endif %}
+            </td>
+            <td>{% if alert.user %}{{ alert.user.full_name|default:alert.user.email }}{% else %}Unknown{% endif %}</td>
+            <td>
+              {% if alert.trip %}<span class="small text-muted d-block">Trip · {{ alert.trip.driver_name }}</span>{% endif %}
+              {% if alert.passenger_log %}<span class="small text-muted d-block">Passenger · {{ alert.passenger_log.passenger_name }}</span>{% endif %}
+              {% if alert.community %}<span class="small text-muted d-block">{{ alert.community.name }}</span>{% endif %}
+              {% if not alert.trip and not alert.passenger_log and not alert.community %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% if alert.status == "resolved" %}<span class="badge bg-success-subtle text-success">Resolved</span>
+              {% elif alert.status == "responding" %}<span class="badge bg-primary-subtle text-primary">Responding</span>
+              {% elif alert.is_overdue %}<span class="badge bg-danger">Overdue</span>
+              {% else %}<span class="badge bg-warning-subtle text-warning-emphasis">Active</span>{% endif %}
+            </td>
+            <td>{{ alert.created_at|date:"d M Y, H:i" }}</td>
+            <td class="pe-3 text-end">
+              <a href="{% url 'dashboard:ehailing_panic_detail' alert.pk %}" class="btn btn-sm btn-outline-secondary">Review</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No panic alerts match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

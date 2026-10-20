@@ -1,0 +1,96 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Officers on Duty{% endblock %}
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
+    <h3 class="fw-bold mb-0">Officers on Duty</h3>
+    <a href="{% url 'dashboard:officer_create' %}" class="btn btn-primary" style="background:#667EEA; border:none;">
+      <i class="bi bi-person-plus"></i> Register Officer
+    </a>
+  </div>
+  <p class="text-muted mb-4">Police, private security and campus security personnel available to assign during an emergency.</p>
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-md-3">
+      <div class="card p-3">
+        <div class="text-muted small">On Duty</div>
+        <div class="stat-value text-success">{{ on_duty_count }}</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-md-3">
+      <div class="card p-3">
+        <div class="text-muted small">Off Duty</div>
+        <div class="stat-value text-secondary">{{ off_duty_count }}</div>
+      </div>
+    </div>
+  </div>
+
+  <form class="row g-2 align-items-center mb-3" method="get">
+    <div class="col-auto">
+      <input type="text" name="q" value="{{ query }}" class="form-control" placeholder="Name or badge number">
+    </div>
+    <div class="col-auto">
+      <select name="organization_type" class="form-select">
+        <option value="">All organizations</option>
+        {% for value, label in organization_type_choices %}
+          <option value="{{ value }}" {% if value == selected_organization_type %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <select name="duty_status" class="form-select">
+        <option value="">All statuses</option>
+        <option value="on" {% if selected_duty_status == "on" %}selected{% endif %}>On Duty</option>
+        <option value="off" {% if selected_duty_status == "off" %}selected{% endif %}>Off Duty</option>
+      </select>
+    </div>
+    <div class="col-auto"><button class="btn btn-outline-primary">Filter</button></div>
+  </form>
+
+  <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Name</th>
+          <th>Badge #</th>
+          <th>Organization</th>
+          <th>Contact</th>
+          <th>Status</th>
+          <th class="pe-3 text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for officer in officers %}
+          <tr>
+            <td class="ps-3">{{ officer.full_name }}</td>
+            <td class="font-monospace">{{ officer.badge_number }}</td>
+            <td>
+              {{ officer.get_organization_type_display }}
+              {% if officer.organization_name %}<br><span class="small text-muted">{{ officer.organization_name }}</span>{% endif %}
+            </td>
+            <td class="small text-muted">
+              {{ officer.phone_number|default:"—" }}
+              {% if officer.email %}<br>{{ officer.email }}{% endif %}
+            </td>
+            <td>
+              {% if officer.is_on_duty %}<span class="badge bg-success">On Duty</span>
+              {% else %}<span class="badge bg-secondary">Off Duty</span>{% endif %}
+            </td>
+            <td class="pe-3 text-end">
+              <form method="post" action="{% url 'dashboard:officer_toggle_duty' officer.pk %}" class="d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                {% if officer.is_on_duty %}
+                  <button class="btn btn-sm btn-outline-secondary">Clock Off</button>
+                {% else %}
+                  <button class="btn btn-sm btn-outline-success">Clock On</button>
+                {% endif %}
+              </form>
+              <a href="{% url 'dashboard:officer_detail' officer.pk %}" class="btn btn-sm btn-outline-secondary">View</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No officers match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

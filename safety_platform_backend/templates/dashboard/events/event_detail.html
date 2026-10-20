@@ -1,0 +1,74 @@
+{% extends "dashboard/base.html" %}
+{% load l10n %}
+{% block title %}{{ event.title }}{% endblock %}
+{% block content %}
+  <a href="{% url 'events_admin:list' %}" class="text-decoration-none small"><i class="bi bi-arrow-left"></i> All events</a>
+  <div class="d-flex justify-content-between align-items-start mt-2 mb-3">
+    <div>
+      <h3 class="fw-bold mb-1">{{ event.title }} {% if event.is_live %}<span class="badge bg-success">LIVE</span>{% endif %}</h3>
+      <span class="badge bg-{% if event.status == 'published' %}success{% elif event.status == 'cancelled' %}secondary{% else %}dark{% endif %}">{{ event.get_status_display }}</span>
+      <span class="text-muted small ms-2">{{ event.get_category_display }}</span>
+    </div>
+    <form method="post" action="{% url 'events_admin:visibility' event.pk %}">
+      {% csrf_token %}
+      {% if event.status == 'hidden' %}
+        <input type="hidden" name="action" value="unhide"><button class="btn btn-outline-success btn-sm">Make public again</button>
+      {% else %}
+        <input type="hidden" name="action" value="hide"><button class="btn btn-outline-danger btn-sm" onclick="return confirm('Hide this event from the public list?')">Hide from public</button>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card p-3 mb-3">
+        <h6 class="fw-bold">Details</h6>
+        <div class="small"><i class="bi bi-calendar-event me-2"></i>{{ event.start_at|date:"D j M Y, H:i" }} to {{ event.end_at|date:"D j M Y, H:i" }}</div>
+        <div class="small mt-1"><i class="bi bi-geo-alt me-2"></i>{{ event.venue_name }}{% if event.address %}, {{ event.address }}{% endif %}</div>
+        {% if event.latitude and event.longitude %}
+          <a class="small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query={{ event.latitude|unlocalize }},{{ event.longitude|unlocalize }}">Open pin in Google Maps</a>
+        {% endif %}
+        <div class="small mt-2"><i class="bi bi-people me-2"></i>{{ attendee_total }} attending{% if event.expected_attendance %} of about {{ event.expected_attendance }} expected{% endif %}</div>
+        <hr>
+        <div class="small"><strong>Host:</strong> {{ event.host.full_name|default:event.host.email|default:"Unknown" }}<br><i class="bi bi-telephone me-1"></i>{{ event.host_phone }}</div>
+        {% if event.security_head_name or event.security_head_phone %}
+          <div class="small mt-2"><strong>Head of security:</strong> {{ event.security_head_name|default:"-" }}<br><i class="bi bi-telephone me-1"></i>{{ event.security_head_phone|default:"-" }}</div>
+        {% endif %}
+        <hr>
+        <p class="small mb-0" style="white-space: pre-wrap;">{{ event.description }}</p>
+      </div>
+      <div class="card p-3">
+        <h6 class="fw-bold">Latest people who joined</h6>
+        {% for a in attendees %}<div class="small">{{ a.user.full_name|default:a.user.email }} <span class="text-muted">· {{ a.joined_at|timesince }} ago</span></div>{% empty %}<div class="small text-muted">Nobody has joined yet.</div>{% endfor %}
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0">Safety alerts for this event {% if open_total %}<span class="badge bg-danger ms-1">{{ open_total }} open</span>{% endif %}</h6>
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'events_admin:incident_list' %}?event={{ event.pk }}&state=all">Open in alert centre</a>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Severity</th><th>Type</th><th>From</th><th>When</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {% for i in incidents %}
+                <tr>
+                  <td><span class="badge bg-{{ i.severity_badge }}">{{ i.get_severity_display }}</span></td>
+                  <td>{{ i.get_kind_display }}</td>
+                  <td>{{ i.reporter_label }}</td>
+                  <td class="small">{{ i.created_at|timesince }} ago</td>
+                  <td><span class="badge bg-{{ i.status_badge }}">{{ i.get_status_display }}</span></td>
+                  <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'events_admin:incident_detail' i.pk %}">View</a></td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-3">No alerts for this event.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

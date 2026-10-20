@@ -1,0 +1,90 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Panic Alert #{{ alert.pk }}{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:ehailing_panic_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to panic alerts</a>
+  <div class="d-flex justify-content-between align-items-start mt-2 mb-4">
+    <div>
+      <h3 class="fw-bold mb-1">{{ alert.get_role_display }} Panic Alert</h3>
+      <span class="text-muted">Triggered {{ alert.created_at|date:"d M Y, H:i" }}</span>
+    </div>
+    {% if alert.is_overdue %}<span class="badge bg-danger">Overdue response</span>{% endif %}
+  </div>
+
+  <div class="row g-4">
+    <div class="col-md-7">
+      <div class="card p-4 mb-3">
+        <h6 class="fw-bold mb-3">Alert details</h6>
+        <dl class="row mb-0">
+          <dt class="col-sm-4 text-muted fw-normal">Triggered by</dt>
+          <dd class="col-sm-8">{% if alert.user %}{{ alert.user.full_name|default:alert.user.email }}{% else %}Unknown{% endif %}</dd>
+          <dt class="col-sm-4 text-muted fw-normal">Location</dt>
+          <dd class="col-sm-8">
+            {% if alert.latitude and alert.longitude %}{{ alert.latitude }}, {{ alert.longitude }}{% else %}Not shared{% endif %}
+          </dd>
+        </dl>
+      </div>
+
+      {% if alert.trip %}
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-car-front-fill"></i> Trip details</h6>
+          <dl class="row mb-0">
+            <dt class="col-sm-4 text-muted fw-normal">Service</dt>
+            <dd class="col-sm-8">{{ alert.trip.get_service_display }}</dd>
+            <dt class="col-sm-4 text-muted fw-normal">Driver</dt>
+            <dd class="col-sm-8">{{ alert.trip.driver_name }}</dd>
+            <dt class="col-sm-4 text-muted fw-normal">Vehicle</dt>
+            <dd class="col-sm-8">{{ alert.trip.vehicle_reg }} · {{ alert.trip.vehicle_model }} ({{ alert.trip.vehicle_color }})</dd>
+            <dt class="col-sm-4 text-muted fw-normal">Pickup → Destination</dt>
+            <dd class="col-sm-8">{{ alert.trip.pickup_location|default:"—" }} → {{ alert.trip.destination_location|default:"—" }}</dd>
+          </dl>
+        </div>
+      {% endif %}
+
+      {% if alert.passenger_log %}
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-person-badge-fill"></i> Passenger log</h6>
+          <dl class="row mb-0">
+            <dt class="col-sm-4 text-muted fw-normal">Passenger</dt>
+            <dd class="col-sm-8">{{ alert.passenger_log.passenger_name }} ({{ alert.passenger_log.passenger_phone|default:"no phone given" }})</dd>
+            <dt class="col-sm-4 text-muted fw-normal">PIN</dt>
+            <dd class="col-sm-8 font-monospace">{{ alert.passenger_log.trip_pin }}</dd>
+            <dt class="col-sm-4 text-muted fw-normal">Pickup → Destination</dt>
+            <dd class="col-sm-8">{{ alert.passenger_log.pickup_location|default:"—" }} → {{ alert.passenger_log.destination_location|default:"—" }}</dd>
+            {% if alert.passenger_log.photo %}
+              <dt class="col-sm-4 text-muted fw-normal">Photo</dt>
+              <dd class="col-sm-8"><img src="{{ alert.passenger_log.photo.url }}" class="rounded" style="max-height:120px;"></dd>
+            {% endif %}
+          </dl>
+        </div>
+      {% endif %}
+
+      {% if alert.community %}
+        <div class="card p-4">
+          <h6 class="fw-bold mb-3"><i class="bi bi-people-fill"></i> Driver community</h6>
+          <p class="mb-0">{{ alert.community.name }} · {{ alert.community.area }} · {{ alert.community.member_count }} members</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="col-md-5">
+      <div class="card p-4">
+        <h6 class="fw-bold mb-3">Response</h6>
+        <form method="post">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea name="response_notes" rows="5" class="form-control">{{ alert.response_notes }}</textarea>
+          </div>
+          {% if not alert.responded_at %}
+            <button type="submit" name="action" value="respond" class="btn btn-warning w-100 mb-2">Mark as Responding</button>
+          {% endif %}
+          {% if alert.status != "resolved" %}
+            <button type="submit" name="action" value="resolve" class="btn btn-success w-100">Mark Resolved</button>
+          {% else %}
+            <div class="alert alert-success mb-0">This alert has been resolved.</div>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

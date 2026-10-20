@@ -1,0 +1,38 @@
+{% extends "dashboard/base.html" %}
+{% block title %}{{ account.email }}{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:account_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to accounts</a>
+  <h3 class="fw-bold mt-2 mb-4">{{ account.full_name|default:account.email }}</h3>
+
+  <div class="card p-4" style="max-width: 560px;">
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">Full name</label>
+        <input type="text" name="full_name" value="{{ account.full_name }}" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Email</label>
+        <input type="email" value="{{ account.email }}" class="form-control" disabled>
+        <div class="form-text">Email can't be changed here — it's how the account logs in.</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Phone number</label>
+        <input type="text" name="phone_number" value="{{ account.phone_number }}" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Joined</label>
+        <input type="text" value="{{ account.date_joined_app|date:'d M Y, H:i' }}" class="form-control" disabled>
+      </div>
+      <div class="form-check mb-2">
+        <input type="checkbox" name="is_active_account" class="form-check-input" id="active" {% if account.is_active_account %}checked{% endif %}>
+        <label class="form-check-label" for="active">Account is active</label>
+      </div>
+      <div class="form-check mb-3">
+        <input type="checkbox" name="is_dashboard_admin" class="form-check-input" id="admin" {% if account.is_dashboard_admin %}checked{% endif %}>
+        <label class="form-check-label" for="admin">Can access this admin dashboard</label>
+      </div>
+      <button type="submit" class="btn btn-primary" style="background:#667EEA; border:none;">Save changes</button>
+    </form>
+  </div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Events{% endblock %}
+{% block content %}
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h3 class="fw-bold mb-1">Events</h3>
+      <p class="text-muted mb-0">Public events hosted through the app, and the safety alerts attendees send to security.</p>
+    </div>
+    <a href="{% url 'events_admin:incident_list' %}" class="btn btn-danger">
+      <i class="bi bi-bell me-1"></i>Event alerts
+      {% if open_incidents %}<span class="badge bg-light text-danger ms-1">{{ open_incidents }}</span>{% endif %}
+    </a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted small">Total events</div><div class="stat-value">{{ total_events }}</div></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted small">Live right now</div><div class="stat-value text-success">{{ live_events }}</div></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted small">Upcoming</div><div class="stat-value">{{ upcoming_events }}</div></div></div>
+    <div class="col-md-3">
+      <a href="{% url 'events_admin:incident_list' %}" class="text-decoration-none">
+        <div class="card p-3">
+          <div class="text-muted small">Open safety alerts</div>
+          <div class="stat-value {% if critical_open %}text-danger{% else %}text-dark{% endif %}">{{ open_incidents }}</div>
+          <div class="small text-muted">{% if critical_open %}{{ critical_open }} critical{% else %}none critical{% endif %}</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="card p-3 mb-3">
+    <form method="get" class="row g-2">
+      <div class="col-md-5"><input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search title, venue or host"></div>
+      <div class="col-md-3">
+        <select name="status" class="form-select">
+          <option value="">All statuses</option>
+          {% for value, label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Filter</button></div>
+    </form>
+  </div>
+
+  <div class="card p-3">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead><tr><th>Event</th><th>Host</th><th>When</th><th>Venue</th><th class="text-center">Attending</th><th class="text-center">Open alerts</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for e in events %}
+            <tr>
+              <td class="fw-semibold">{{ e.title }}{% if e.is_live %} <span class="badge bg-success ms-1">LIVE</span>{% endif %}<div class="small text-muted">{{ e.get_category_display }}</div></td>
+              <td>{{ e.host.full_name|default:e.host.email|default:"Unknown" }}</td>
+              <td class="small">{{ e.start_at|date:"D j M, H:i" }}<br>to {{ e.end_at|date:"D j M, H:i" }}</td>
+              <td>{{ e.venue_name }}</td>
+              <td class="text-center">{{ e.attendee_total }}</td>
+              <td class="text-center">{% if e.open_total %}<span class="badge bg-danger">{{ e.open_total }}</span>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+              <td><span class="badge bg-{% if e.status == 'published' %}success{% elif e.status == 'cancelled' %}secondary{% else %}dark{% endif %}">{{ e.get_status_display }}</span></td>
+              <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'events_admin:detail' e.pk %}">Open</a></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">No events yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

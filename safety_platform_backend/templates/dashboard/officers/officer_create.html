@@ -1,0 +1,44 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Register Officer{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:officer_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to officers</a>
+  <h3 class="fw-bold mt-2 mb-1">Register Officer</h3>
+  <p class="text-muted mb-4">Add police, private security or campus security personnel to the roster.</p>
+
+  <div class="card p-4" style="max-width: 640px;">
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">Full Name</label>
+        <input type="text" name="full_name" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Badge / Employee Number</label>
+        <input type="text" name="badge_number" class="form-control" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Organization Type</label>
+        <select name="organization_type" class="form-select">
+          {% for value, label in organization_type_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Organization Name <span class="text-muted small">(e.g. the security company or police station)</span></label>
+        <input type="text" name="organization_name" class="form-control">
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label">Phone Number</label>
+          <input type="text" name="phone_number" class="form-control">
+        </div>
+        <div class="col-md-6 mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary w-100" style="background:#667EEA; border:none;">Register Officer</button>
+    </form>
+  </div>
+{% endblock %}

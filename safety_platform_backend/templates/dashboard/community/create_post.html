@@ -1,0 +1,44 @@
+{% extends "dashboard/base.html" %}
+{% block title %}New Official Post{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:post_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to community</a>
+  <h3 class="fw-bold mt-2 mb-1">New Official Post</h3>
+  <p class="text-muted mb-4">Posted as {{ request.user.full_name|default:request.user.email }} — will show the ✓ Verified badge in the app.</p>
+
+  <div class="card p-4" style="max-width: 560px;">
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">Type</label>
+        <select name="post_type" class="form-select">
+          {% for value, label in post_type_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Category</label>
+        <select name="category" class="form-select">
+          {% for value, label in category_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Content</label>
+        <textarea name="content" rows="5" class="form-control" required></textarea>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Location (optional)</label>
+        <input type="text" name="location_description" class="form-control">
+      </div>
+      <button type="submit" class="btn btn-primary w-100" style="background:#667EEA; border:none;">
+        <i class="bi bi-patch-check-fill me-1"></i> Publish official post
+      </button>
+    </form>
+    <div class="mb-3">
+  <label class="form-label">Attach photos or video (optional)</label>
+  <input type="file" name="media" class="form-control" multiple accept="image/*,video/*">
+</div>
+  </div>
+{% endblock %}

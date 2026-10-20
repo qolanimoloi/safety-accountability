@@ -1,0 +1,75 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Emergencies{% endblock %}
+{% block content %}
+  <h3 class="fw-bold mb-1">Emergencies</h3>
+  <p class="text-muted mb-4">Live emergency triggers from the app. Each has a real 5-minute response window — respond before it lapses to avoid a PONR certificate being honestly issuable.</p>
+
+  <form class="row g-2 mb-3" method="get">
+    <div class="col-auto">
+      <select name="status" class="form-select">
+        <option value="">All statuses</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <select name="incident_type" class="form-select">
+        <option value="">All types</option>
+        {% for value, label in incident_type_choices %}
+          <option value="{{ value }}" {% if value == selected_incident_type %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-primary">Filter</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <table class="table mb-0 align-middle">
+      <thead>
+        <tr>
+          <th class="ps-3">Reference</th>
+          <th>Type</th>
+          <th>Reported by</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Reported</th>
+          <th class="pe-3"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in emergencies %}
+          <tr class="{% if e.is_overdue %}table-danger{% endif %}">
+            <td class="ps-3 font-monospace">{{ e.reference }}</td>
+            <td>{{ e.get_incident_type_display }}</td>
+            <td>
+              {% if e.user %}{{ e.user.full_name|default:e.user.email }}{% else %}Unknown{% endif %}
+            </td>
+            <td>
+              {% if e.latitude and e.longitude %}
+                <a href="https://www.google.com/maps?q={{ e.latitude }},{{ e.longitude }}" target="_blank">{{ e.latitude }}, {{ e.longitude }}</a>
+              {% else %}
+                {{ e.location_description|default:"Not provided" }}
+              {% endif %}
+            </td>
+            <td>
+              {% if e.is_overdue %}<span class="badge bg-danger">Overdue — no response</span>
+              {% elif e.status == "active" %}<span class="badge bg-warning text-dark">Active</span>
+              {% elif e.status == "responding" %}<span class="badge bg-primary-subtle text-primary">Responding</span>
+              {% elif e.status == "resolved" %}<span class="badge bg-success-subtle text-success">Resolved</span>
+              {% else %}<span class="badge bg-dark">Unresponded (PONR)</span>{% endif %}
+            </td>
+            <td>{{ e.created_at|date:"d M Y, H:i:s" }}</td>
+            <td class="pe-3 text-end">
+              <a href="{% url 'dashboard:emergency_detail' e.pk %}" class="btn btn-sm btn-outline-secondary">Respond</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" class="text-center text-muted py-4">No emergencies match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

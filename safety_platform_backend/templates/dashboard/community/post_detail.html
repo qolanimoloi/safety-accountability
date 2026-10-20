@@ -1,0 +1,106 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Post #{{ post.pk }}{% endblock %}
+{% block content %}
+  <a href="{% url 'dashboard:post_list' %}" class="text-decoration-none text-muted small"><i class="bi bi-arrow-left"></i> Back to community</a>
+
+  <div class="d-flex justify-content-between align-items-start mt-2 mb-4">
+    <div>
+      <h3 class="fw-bold mb-1">
+        {{ post.author.full_name|default:"Unknown" }}
+        {% if post.is_official %}<span class="badge bg-primary">✓ Verified</span>{% endif %}
+      </h3>
+      <span class="text-muted">{{ post.get_post_type_display }} · {{ post.get_category_display }} · {{ post.created_at|date:"d M Y, H:i" }}</span>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-md-7">
+      <div class="card p-4 mb-3">
+        <p style="white-space: pre-wrap;">{{ post.content }}</p>
+        {% if post.media.all %}
+  <div class="d-flex flex-wrap gap-2 mt-2">
+    {% for m in post.media.all %}
+      {% if m.media_type == "image" %}
+        <img src="{{ m.file.url }}" class="img-fluid rounded" style="max-height:220px;">
+      {% else %}
+        <video src="{{ m.file.url }}" controls class="rounded" style="max-height:220px;"></video>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endif %}
+        {% if post.location_description or post.latitude %}
+          <div class="text-muted small mt-3">
+            <i class="bi bi-geo-alt"></i>
+            {% if post.latitude and post.longitude %}
+              <a href="https://www.google.com/maps?q={{ post.latitude }},{{ post.longitude }}" target="_blank">{{ post.latitude }}, {{ post.longitude }}</a>
+            {% else %}
+              {{ post.location_description }}
+            {% endif %}
+          </div>
+        {% endif %}
+        <div class="text-muted small mt-3">
+          {{ post.likes_count }} likes · {{ post.comments_count }} comments · {{ post.shares_count }} shares
+          {% if post.is_trending %}· <span class="text-danger fw-bold">🔥 Trending</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="card p-4 mb-3">
+        <h6 class="fw-bold mb-3">Comments ({{ comments.count }})</h6>
+        {% for c in comments %}
+          <div class="mb-2 pb-2 border-bottom">
+            <strong>{{ c.author.full_name|default:"Unknown" }}</strong>
+            <span class="text-muted small">· {{ c.created_at|date:"d M Y, H:i" }}</span>
+            <div>{{ c.content }}</div>
+          </div>
+        {% empty %}
+          <p class="text-muted mb-0">No comments.</p>
+        {% endfor %}
+      </div>
+
+      <div class="card p-4">
+        <h6 class="fw-bold mb-3">Reports against this post ({{ reports.count }})</h6>
+        {% for r in reports %}
+          <div class="mb-3 pb-3 border-bottom">
+            <div class="d-flex justify-content-between">
+              <strong>{{ r.get_reason_display }}</strong>
+              {% if r.resolved %}<span class="badge bg-success-subtle text-success">Resolved</span>{% else %}<span class="badge bg-danger-subtle text-danger">Open</span>{% endif %}
+            </div>
+            <div class="small text-muted">Reported by {{ r.reporter.full_name|default:"Unknown" }} · {{ r.created_at|date:"d M Y, H:i" }}</div>
+            {% if r.details %}<div class="mt-1">{{ r.details }}</div>{% endif %}
+            {% if r.admin_notes %}<div class="mt-1 text-muted small">Admin notes: {{ r.admin_notes }}</div>{% endif %}
+            {% if not r.resolved %}
+              <form method="post" class="mt-2 d-flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="resolve_report">
+                <input type="hidden" name="report_id" value="{{ r.pk }}">
+                <input type="text" name="admin_notes" class="form-control form-control-sm" placeholder="Resolution notes (optional)">
+                <button type="submit" class="btn btn-sm btn-outline-success text-nowrap">Mark resolved</button>
+              </form>
+            {% endif %}
+          </div>
+        {% empty %}
+          <p class="text-muted mb-0">No reports against this post.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="col-md-5">
+      <div class="card p-4">
+        <h6 class="fw-bold mb-3">Moderation</h6>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="set_status">
+          <div class="mb-3">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+              <option value="published" {% if post.status == "published" %}selected{% endif %}>Published</option>
+              <option value="hidden" {% if post.status == "hidden" %}selected{% endif %}>Hidden (not shown in feed)</option>
+              <option value="removed" {% if post.status == "removed" %}selected{% endif %}>Removed</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary w-100" style="background:#667EEA; border:none;">Save status</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}
