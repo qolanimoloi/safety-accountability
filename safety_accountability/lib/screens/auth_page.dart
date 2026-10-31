@@ -3,6 +3,7 @@ import '../app_settings.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/account_service.dart';
 import '../services/auth_service.dart';
+import '../services/input_validators.dart';
 import '../widgets/app_logo.dart';
 
 /// Sign up / Log in screen. Shown whenever `isLoggedIn` (app_settings.dart)
@@ -127,16 +128,14 @@ class _AuthPageState extends State<AuthPage> {
   String? _emailValidator(String? v) {
     final l10n = AppLocalizations.of(context)!;
     if (v == null || v.trim().isEmpty) return l10n.emailRequired;
-    final pattern = RegExp(r'^[\w\.\-]+@[\w\-]+\.[a-zA-Z]{2,}$');
-    if (!pattern.hasMatch(v.trim())) return l10n.emailInvalid;
+       if (!InputValidators.isValidEmail(v)) return l10n.emailInvalid;
     return null;
   }
 
-  String? _phoneValidator(String? v) {
+   String? _phoneValidator(String? v) {
     final l10n = AppLocalizations.of(context)!;
     if (v == null || v.trim().isEmpty) return l10n.phoneRequired;
-    final digits = v.replaceAll(RegExp(r'[^0-9+]'), '');
-    if (digits.length < 10) return l10n.phoneInvalid;
+    if (InputValidators.normalizeSaMobile(v) == null) return InputValidators.saMobileMessage;
     return null;
   }
 
@@ -505,10 +504,9 @@ class _PhoneDialogState extends State<_PhoneDialog> {
                   prefixIcon: const Icon(Icons.phone_outlined, size: 19),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                validator: (v) {
+                                validator: (v) {
                   if (v == null || v.trim().isEmpty) return l10n.phoneRequired;
-                  final digits = v.replaceAll(RegExp(r'[^0-9+]'), '');
-                  if (digits.length < 10) return l10n.phoneInvalid;
+                  if (InputValidators.normalizeSaMobile(v) == null) return InputValidators.saMobileMessage;
                   return null;
                 },
               ),

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../services/community_service.dart';
 import '../widgets/user_profile_sheet.dart';
+import '../widgets/video_viewer.dart';
 
 const List<String> _categoryLabels = [
   'General Alert',
@@ -205,8 +206,16 @@ class _CommunityPageState extends State<CommunityPage> {
 
   Future<void> _pickVideo() async {
     try {
-      final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+           final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
       if (picked != null) {
+        final size = await File(picked.path).length();
+        if (!mounted) return;
+        if (size > 60 * 1024 * 1024) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('That video is larger than 60MB. Please choose a shorter one.')),
+          );
+          return;
+        }
         setState(() => _composerMedia.add(File(picked.path)));
       }
     } catch (_) {}
@@ -896,19 +905,8 @@ class _CommunityPageState extends State<CommunityPage> {
             itemCount: media.length,
             itemBuilder: (context, i) {
               final item = media[i];
-              if (item.mediaType == 'video') {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.videocam_rounded, color: Colors.white, size: 60),
-                      const SizedBox(height: 12),
-                      const Text('Video attachment', style: TextStyle(color: Colors.white)),
-                      const SizedBox(height: 16),
-                      Text(item.url, style: const TextStyle(color: Colors.white54, fontSize: 11), textAlign: TextAlign.center),
-                    ],
-                  ),
-                );
+                           if (item.mediaType == 'video') {
+                return VideoViewer(key: ValueKey(item.url), url: item.url);
               }
               return InteractiveViewer(child: Image.network(item.url, fit: BoxFit.contain));
             },

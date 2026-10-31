@@ -57,8 +57,10 @@ class QuickSosService : Service() {
         private const val ID_STATUS = 7101
         private const val ID_ALERT = 7102
 
-        private const val PRESS_WINDOW_MS = 2500L
-        private const val COUNTDOWN_SECONDS = 5
+                private const val PRESS_WINDOW_MS = 3000L
+        private const val REQUIRED_PRESSES = 4
+        private const val MIN_GAP_MS = 120L
+        private const val COUNTDOWN_SECONDS = 3
         private const val COOLDOWN_MS = 30_000L
 
         fun hasLocationPermission(ctx: Context): Boolean =
@@ -93,9 +95,11 @@ class QuickSosService : Service() {
                 presses.clear()
                 return
             }
+                       // Some phones send two broadcasts for one press; ignore the echo.
+            if (presses.isNotEmpty() && now - presses.last() < MIN_GAP_MS) return
             presses.addLast(now)
             while (presses.isNotEmpty() && now - presses.first() > PRESS_WINDOW_MS) presses.removeFirst()
-            if (presses.size >= 3) {
+            if (presses.size >= REQUIRED_PRESSES) {
                 presses.clear()
                 beginCountdown()
             }
@@ -216,7 +220,7 @@ class QuickSosService : Service() {
 
                     val body = JSONObject()
                         .put("incident_type", "other")
-                        .put("location_description", "QUICK SOS - power button x3")
+                        .put("location_description", "QUICK SOS - power button x4")
                     if (loc != null) {
                         body.put("latitude", Math.round(loc.latitude * 1e6) / 1e6)
                         body.put("longitude", Math.round(loc.longitude * 1e6) / 1e6)
@@ -334,7 +338,7 @@ class QuickSosService : Service() {
         NotificationCompat.Builder(this, CH_STATUS)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("Quick SOS is on")
-            .setContentText("Press the power button 3 times quickly to alert admin.")
+            .setContentText("Press the power button 4 times quickly to alert admin.")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openAppPendingIntent())

@@ -68,6 +68,10 @@ class User(AbstractUser):
     # Optional profile picture. When empty the app shows the person's initials.
     profile_photo = models.ImageField(upload_to=profile_photo_upload_path, null=True, blank=True)
 
+    # Fingerprint of the profile picture, used to stop the same picture being
+    # used on two accounts. Empty when there is no picture.
+    photo_hash = models.CharField(max_length=16, blank=True, default="", editable=False)
+
     # Staff who can log into the web admin dashboard vs. ordinary app
     # users. is_staff (inherited) already gates Django admin; this is a
     # clearer, dashboard-specific flag so "who can see the dashboard"

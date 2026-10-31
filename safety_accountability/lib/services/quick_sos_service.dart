@@ -1,14 +1,16 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'auth_service.dart';
 
 /// Talks to the native Android service that watches for 3 quick power-button
-/// presses. Android only. iOS does not allow apps to see the power button.
+/// presses. Android only. iOS and browsers do not allow apps to see the
+/// power button.
 class QuickSosService {
   static const _channel = MethodChannel('safety/quick_sos');
 
-  static bool get supported => Platform.isAndroid;
+  static bool get supported => !kIsWeb && Platform.isAndroid;
 
   static Future<bool> isEnabled() async {
     if (!supported) return false;
@@ -64,7 +66,11 @@ class QuickSosService {
           needsSettings: true,
         );
       }
-      return (ok: true, message: 'Quick SOS is on. Press the power button 3 times to trigger it.', needsSettings: false);
+      return (
+        ok: true,
+        message: 'Quick SOS is on. Press the power button 4 times quickly. If your phone opens the camera or another shortcut instead, turn that shortcut off in Settings.',
+        needsSettings: false,
+      );
     } catch (_) {
       return (ok: false, message: 'Could not turn on Quick SOS. Please try again.', needsSettings: false);
     }

@@ -890,8 +890,10 @@ class _CreateActivityFormState extends State<_CreateActivityForm> {
             initialValue: _type,
             decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
             items: _activityTypes.map((t) => DropdownMenuItem(value: t['value'], child: Text(t['label']!))).toList(),
-            onChanged: (v) => setState(() => _type = v!),
+                       onChanged: (v) => setState(() => _type = v!),
           ),
+          const SizedBox(height: 12),
+          _SafetyAdvice(activityType: _type),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -991,6 +993,109 @@ class _CreateActivityFormState extends State<_CreateActivityForm> {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+class _SafetyAdvice extends StatelessWidget {
+  final String activityType;
+  const _SafetyAdvice({required this.activityType});
+
+  List<String> get _tips {
+    final common = <String>[
+      'Tell your emergency contacts where you are going and when you will be back.',
+      'Share your live location with them while you are out.',
+      'If something feels wrong, leave. You do not owe anyone an explanation.',
+    ];
+    switch (activityType) {
+      case 'date':
+      case 'meeting_new_person':
+        return [
+          'Video call them first and check that the face matches their photos. Be careful if they keep avoiding video calls.',
+          'Ask for a short live video or a new selfie, not only old photos.',
+          'Search their name and photos online (for example with Google Lens) to see if the pictures belong to someone else.',
+          'Meet in a busy public place and use your own transport.',
+          ...common,
+        ];
+      case 'online_purchase_meetup':
+        return [
+          'Video call the seller first and ask them to show the item live.',
+          'Meet at a busy place, such as a shopping centre or a police station.',
+          'Do not pay before you have seen and checked the item.',
+          ...common,
+        ];
+      case 'ride_share':
+        return [
+          'Check that the car, number plate and driver photo match what the app shows.',
+          'Send the trip details to a contact before you get in.',
+          ...common,
+        ];
+      case 'job_interview':
+        return [
+          'Check the company on its official website, and phone the number listed there.',
+          'Ask for a video call first. Never pay a fee to get a job.',
+          'Go to a real office, or use a video interview.',
+          ...common,
+        ];
+      case 'property_viewing':
+        return [
+          'Video call the agent first and ask for their Fidelity Fund Certificate.',
+          'Do not pay a deposit before you have seen the property.',
+          'Take someone with you if you can.',
+          ...common,
+        ];
+      default:
+        return common;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFF856404);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3CD),
+        borderRadius: BorderRadius.circular(10),
+        border: const Border(left: BorderSide(color: Color(0xFFFFC107), width: 4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.verified_user_rounded, size: 18, color: color),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Before you go: check who you are meeting',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: color),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ..._tips.map(
+            (t) => Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('•  ', style: TextStyle(color: color)),
+                  Expanded(child: Text(t, style: const TextStyle(fontSize: 12.5, height: 1.35, color: color))),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'The app cannot confirm who someone really is. These steps lower your risk.',
+            style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: color),
+          ),
+        ],
+      ),
     );
   }
 }

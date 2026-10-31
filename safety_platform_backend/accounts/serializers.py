@@ -2,6 +2,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from .models import User
+from .validators import SA_MOBILE_MESSAGE, normalize_sa_mobile
 
 MAX_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024  # 5MB
 
@@ -19,6 +20,14 @@ class SignupSerializer(serializers.ModelSerializer):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("An account with this email already exists.")
         return value
+
+    def validate_phone_number(self, value):
+        # Stored in one standard shape (+27XXXXXXXXX). Contact matching only
+        # compares the last 9 digits, so older numbers saved as 067... still match.
+        normalized = normalize_sa_mobile((value or "").strip())
+        if normalized is None:
+            raise serializers.ValidationError(SA_MOBILE_MESSAGE)
+        return normalized
 
     def validate_password(self, value):
         # Runs Django's configured password validators (minimum length,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,7 +69,10 @@ class AuthService {
   /// Signs up or logs in with Google. Returns null if the person closed the
   /// Google window without choosing an account. Throws an AuthException with a
   /// readable message for real failures.
-  static Future<({bool needsPhone, bool isNew})?> loginWithGoogle() async {
+    static Future<({bool needsPhone, bool isNew})?> loginWithGoogle() async {
+    if (kIsWeb) {
+      throw AuthException('Google sign-in is only available in the Android app for now. Please use your email and password here.');
+    }
     final String idToken;
     try {
       if (!_googleReady) {

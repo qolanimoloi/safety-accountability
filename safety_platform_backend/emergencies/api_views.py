@@ -1,5 +1,7 @@
+import logging
+
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -17,22 +19,68 @@ from .serializers import (
     IncomingAlertSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _who(user):
     return user.full_name or user.email
+
+
+def _safely(func, *args, **kwargs):
+    """
+    Notifications are a courtesy. If one fails it must never turn a
+    request that already worked into an error 500 for the person.
+    """
+    try:
+        func(*args, **kwargs)
+    except Exception:
+        logger.exception("Contact notification failed")
 
 
 def _notify_request(contact, sender):
     """Tell the other person (if they have the app) that a request is waiting."""
     person = contact.linked_user
     if person:
-        send_notification(
+        _safely(
+            send_notification,
             person,
             "alert",
             f"{_who(sender)} wants to add you as an emergency contact. Tap to accept or decline.",
             action="contact_request",
             object_id=contact.id,
         )
+
+
+def _ensure_reverse_contact(accepter, requester):
+    """
+    Two-way contacts. When `accepter` accepts a request from `requester`,
+    `requester` must also be in `accepter`'s circle (already accepted), so
+    nobody has to send a second request.
+    Returns the contact row, or None if the requester has no phone number saved
+    (a contact is matched by phone number, so there is nothing to save).
+    """
+    phone = requester.phone_number
+    norm = EmergencyContact._normalize(phone)
+    if not phone or not norm:
+        return None
+
+    now = timezone.now()
+    for existing in accepter.emergency_contacts.all():
+        if EmergencyContact._normalize(existing.phone_number) == norm:
+            if existing.status != "accepted":
+                existing.status = "accepted"
+                existing.responded_at = now
+                existing.save(update_fields=["status", "responded_at"])
+            return existing
+
+    return EmergencyContact.objects.create(
+        owner=accepter,
+        name=_who(requester)[:150],
+        phone_number=phone,
+        relationship="Friend",
+        status="accepted",
+        responded_at=now,
+    )
 
 
 @api_view(["POST"])
@@ -161,7 +209,12 @@ def contact_requests(request):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def contact_respond(request, pk):
-    """Accept or decline a request. Body: {"action": "accept"} or {"action": "decline"}."""
+    """
+    Accept or decline a request. Body: {"action": "accept"} or {"action": "decline"}.
+
+    Accepting works both ways: the person who asked becomes my contact AND I
+    become theirs, so neither of us has to send a second request.
+    """
     contact = get_object_or_404(EmergencyContact.all_pointing_to(request.user).select_related("owner"), pk=pk)
 
     action = str(request.data.get("action", "")).strip().lower()
@@ -169,20 +222,37 @@ def contact_respond(request, pk):
         return Response({"action": ["Choose accept or decline."]}, status=status.HTTP_400_BAD_REQUEST)
 
     accepted = action == "accept"
-    contact.status = "accepted" if accepted else "declined"
-    contact.responded_at = timezone.now()
-    contact.save()
+    with transaction.atomic():
+        contact.status = "accepted" if accepted else "declined"
+        contact.responded_at = timezone.now()
+        contact.save(update_fields=["status", "responded_at"])
+        if accepted:
+            _ensure_reverse_contact(accepter=request.user, requester=contact.owner)
 
     me = _who(request.user)
-    send_notification(
+    _safely(
+        send_notification,
         contact.owner,
         "alert",
-        f"{me} accepted your emergency contact request. They will now get your emergency alerts."
+        f"{me} accepted your emergency contact request. You are now each other's emergency contacts."
         if accepted
         else f"{me} declined your emergency contact request.",
         action="contact_response",
     )
-    mark_handled(request.user, "contact_request", contact.id)
+    _safely(mark_handled, request.user, "contact_request", contact.id)
+
+    return Response(
+        {
+            "id": contact.id,
+            "status": contact.status,
+            "detail": (
+                f"You and {_who(contact.owner)} are now each other's emergency contacts."
+                if accepted
+                else "Request declined."
+            ),
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["DELETE"])

@@ -18,25 +18,6 @@ class PostCommentSerializer(serializers.ModelSerializer):
     def get_author_id(self, obj):
         return obj.author_id
 
-    class Meta:
-        model = PostComment
-        fields = ["id", "author_id", "author_name", "content", "created_at"]
-        read_only_fields = fields
-
-    def get_author_name(self, obj):
-        return obj.author.full_name if obj.author else "Unknown"
-
-    def get_author_id(self, obj):
-        return obj.author_id
-
-    class Meta:
-        model = PostComment
-        fields = ["id", "author_name", "content", "created_at"]
-        read_only_fields = fields
-
-    def get_author_name(self, obj):
-        return obj.author.full_name if obj.author else "Unknown"
-
 
 class PostCommentCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -101,7 +82,6 @@ class CommunityPostSerializer(serializers.ModelSerializer):
             return "?"
         parts = obj.author.full_name.split()
         return "".join(p[0].upper() for p in parts[:2])
-
 
     def get_author_id(self, obj):
         return obj.author_id

@@ -8,3 +8,4 @@ __pycache__/
 safety_platform_backend/media/
 safety_platform_backend/staticfiles/
 safety_accountability_backend/
+history.txt

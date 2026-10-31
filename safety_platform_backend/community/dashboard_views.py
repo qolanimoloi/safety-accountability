@@ -1,7 +1,13 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
-from .models import CommunityPost, PostMedia, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS
+from .models import (
+    CommunityPost,
+    PostMedia,
+    ALLOWED_IMAGE_EXTENSIONS,
+    ALLOWED_VIDEO_EXTENSIONS,
+    MAX_POST_MEDIA_SIZE_BYTES,
+)
 
 
 def _is_dashboard_admin(user):
@@ -84,6 +90,10 @@ def create_official_post(request):
         for index, f in enumerate(request.FILES.getlist("media")):
             ext = f.name.rsplit(".", 1)[-1].lower() if "." in f.name else ""
             if ext not in ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS:
+                messages.warning(request, f"{f.name} was skipped: only JPG, PNG, MP4 and MOV files are allowed.")
+                continue
+            if f.size > MAX_POST_MEDIA_SIZE_BYTES:
+                messages.warning(request, f"{f.name} was skipped: it is larger than 60MB.")
                 continue
             media_type = "video" if ext in ALLOWED_VIDEO_EXTENSIONS else "image"
             PostMedia.objects.create(

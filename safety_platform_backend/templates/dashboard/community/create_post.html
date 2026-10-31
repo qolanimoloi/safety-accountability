@@ -6,7 +6,7 @@
   <p class="text-muted mb-4">Posted as {{ request.user.full_name|default:request.user.email }} — will show the ✓ Verified badge in the app.</p>
 
   <div class="card p-4" style="max-width: 560px;">
-    <form method="post">
+    <form method="post" enctype="multipart/form-data">
       {% csrf_token %}
       <div class="mb-3">
         <label class="form-label">Type</label>
@@ -32,13 +32,14 @@
         <label class="form-label">Location (optional)</label>
         <input type="text" name="location_description" class="form-control">
       </div>
+      <div class="mb-3">
+        <label class="form-label">Attach photos or video (optional)</label>
+        <input type="file" name="media" class="form-control" multiple accept=".jpg,.jpeg,.png,.mp4,.mov,image/*,video/*">
+        <div class="form-text">JPG, PNG, MP4 or MOV. Up to 60MB each.</div>
+      </div>
       <button type="submit" class="btn btn-primary w-100" style="background:#667EEA; border:none;">
         <i class="bi bi-patch-check-fill me-1"></i> Publish official post
       </button>
     </form>
-    <div class="mb-3">
-  <label class="form-label">Attach photos or video (optional)</label>
-  <input type="file" name="media" class="form-control" multiple accept="image/*,video/*">
-</div>
   </div>
 {% endblock %}

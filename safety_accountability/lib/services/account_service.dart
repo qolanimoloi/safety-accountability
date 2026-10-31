@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
@@ -93,11 +95,43 @@ class AccountService {
     return user;
   }
 
+  /// Rejects a picture that has no human face in it (a cat, a logo, a
+  /// landscape). Only runs on Android and iOS. If the detector itself cannot
+  /// run, the picture is let through rather than blocking the person.
+  static Future<void> _requireHumanFace(File photo) async {
+    if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return;
+
+    bool? foundFace;
+    final detector = FaceDetector(
+      options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.accurate,
+        minFaceSize: 0.15,
+      ),
+    );
+    try {
+      final faces = await detector.processImage(InputImage.fromFilePath(photo.path));
+      foundFace = faces.isNotEmpty;
+    } catch (_) {
+      foundFace = null; // detector unavailable: do not block the upload
+    } finally {
+      try {
+        await detector.close();
+      } catch (_) {}
+    }
+
+    if (foundFace == false) {
+      throw AccountException(
+        'We could not see a face in that picture. Please choose a clear photo of yourself.',
+      );
+    }
+  }
+
   /// Uploads [photo] as the profile picture. Returns the updated user.
   static Future<Map<String, dynamic>> uploadProfilePhoto(File photo) async {
     final token = await AuthService.getToken();
     if (token == null) throw AccountException('You need to be signed in to do this.');
     try {
+      await _requireHumanFace(photo);
       final request = http.MultipartRequest('POST', _u('/api/accounts/profile-photo/'))
         ..headers['Authorization'] = 'Token $token'
         ..files.add(await http.MultipartFile.fromPath('photo', photo.path));

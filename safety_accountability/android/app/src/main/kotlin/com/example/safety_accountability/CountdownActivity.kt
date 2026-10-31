@@ -59,9 +59,8 @@ class CountdownActivity : Activity() {
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        deadline = intent.getLongExtra(QuickSosService.EXTRA_DEADLINE, System.currentTimeMillis() + 5000)
+        deadline = intent.getLongExtra(QuickSosService.EXTRA_DEADLINE, System.currentTimeMillis() + 3000)
 
-        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(Color.parseColor("#B91C1C"))
@@ -82,7 +81,7 @@ class CountdownActivity : Activity() {
             gravity = Gravity.CENTER
         }
         numberView = TextView(this).apply {
-            text = "5"
+            text = "3"
             setTextColor(Color.WHITE)
             textSize = 120f
             typeface = Typeface.DEFAULT_BOLD
