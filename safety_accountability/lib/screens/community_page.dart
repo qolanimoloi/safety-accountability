@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:async';
 import 'dart:io';
 import '../services/community_service.dart';
+import '../widgets/reactions.dart';
+import '../widgets/share_post_sheet.dart';
+import '../widgets/stickers.dart';
+import '../widgets/user_avatar.dart';
 import '../widgets/user_profile_sheet.dart';
 import '../widgets/video_viewer.dart';
 
@@ -79,6 +85,8 @@ class CommunityPost {
   final double? distanceKm;
   bool likedByMe;
   final List<PostMediaItem> media;
+  final bool isRepost;
+  final Map<String, dynamic>? sharedFrom;
 
   CommunityPost({
     required this.id,
@@ -101,6 +109,8 @@ class CommunityPost {
     required this.distanceKm,
     required this.likedByMe,
     required this.media,
+    this.isRepost = false,
+    this.sharedFrom,
   });
 
   factory CommunityPost.fromJson(Map<String, dynamic> json) => CommunityPost(
@@ -124,6 +134,8 @@ class CommunityPost {
         distanceKm: (json['distance_km'] as num?)?.toDouble(),
         likedByMe: json['liked_by_me'] == true,
         media: ((json['media'] as List?) ?? []).map((e) => PostMediaItem.fromJson(e as Map<String, dynamic>)).toList(),
+        isRepost: json['is_repost'] == true,
+        sharedFrom: json['shared_from'] is Map ? Map<String, dynamic>.from(json['shared_from'] as Map) : null,
       );
 }
 class CommunityPage extends StatefulWidget {
@@ -298,15 +310,15 @@ class _CommunityPageState extends State<CommunityPage> {
   }
 
   Future<void> _handleShare(CommunityPost post) async {
-    try {
-      final result = await CommunityService.sharePost(post.id);
-      if (!mounted) return;
-      setState(() => post.sharesCount = result['shares_count'] as int? ?? post.sharesCount + 1);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Shared to your network.')));
-    } on CommunityException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    }
+    await showSharePostSheet(
+      context,
+      postId: post.id,
+      onDone: (count, reposted) {
+        if (!mounted) return;
+        if (count != null) setState(() => post.sharesCount = count);
+        if (reposted) _loadPosts();
+      },
+    );
   }
 
   void _openComments(CommunityPost post) {
@@ -638,7 +650,17 @@ class _CommunityPageState extends State<CommunityPage> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: isVideo
-                            ? Container(width: 70, height: 70, color: Colors.black87, child: const Icon(Icons.videocam_rounded, color: Colors.white))
+                            ? SizedBox(
+                                width: 70,
+                                height: 70,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    VideoThumb(file: file, width: 70, height: 70, showPlay: false, borderRadius: BorderRadius.zero),
+                                    const Positioned(left: 4, bottom: 4, child: Icon(Icons.videocam_rounded, color: Colors.white, size: 16)),
+                                  ],
+                                ),
+                              )
                             : Image.file(file, width: 70, height: 70, fit: BoxFit.cover),
                       ),
                       Positioned(
@@ -805,10 +827,23 @@ class _CommunityPageState extends State<CommunityPage> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(post.content, style: const TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF333333))),
-          ),
+          if (post.isRepost)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.repeat_rounded, size: 15, color: Colors.grey),
+                  SizedBox(width: 5),
+                  Text('Shared a post', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+          if (post.content.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(post.content, style: const TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF333333))),
+            ),
+          if (post.isRepost) _buildSharedCard(post),
           if (post.media.isNotEmpty) _buildMediaGallery(post.media),
           if (post.distanceKm != null)
             Container(
@@ -858,6 +893,85 @@ class _CommunityPageState extends State<CommunityPage> {
     );
   }
 
+  /// The original post shown inside a repost.
+  Widget _buildSharedCard(CommunityPost post) {
+    final s = post.sharedFrom;
+    if (s == null || s['unavailable'] == true) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(12)),
+        child: const Row(
+          children: [
+            Icon(Icons.info_outline_rounded, color: Colors.grey, size: 18),
+            SizedBox(width: 8),
+            Expanded(child: Text('This post is no longer available.', style: TextStyle(color: Colors.grey))),
+          ],
+        ),
+      );
+    }
+    final media = ((s['media'] as List?) ?? [])
+        .map((e) => PostMediaItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    final authorId = (s['author_id'] as num?)?.toInt();
+    final name = s['author_name']?.toString() ?? 'Unknown';
+    final photo = s['author_photo']?.toString();
+    final created = DateTime.tryParse(s['created_at']?.toString() ?? '');
+    final content = s['content']?.toString() ?? '';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: authorId == null ? null : () => showUserProfileSheet(context, userId: authorId, name: name, photoUrl: photo),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+              child: Row(
+                children: [
+                  UserAvatar(name: name, photoUrl: photo, radius: 16),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(child: Text(name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5))),
+                            if (s['is_official'] == true) ...[
+                              const SizedBox(width: 4),
+                              const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF007BFF)),
+                            ],
+                          ],
+                        ),
+                        Text(
+                          [s['category_display']?.toString() ?? '', if (created != null) _timeAgo(created.toLocal())].where((e) => e.isNotEmpty).join(' • '),
+                          style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (content.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: Text(content, style: const TextStyle(fontSize: 13.5, height: 1.45, color: Color(0xFF333333))),
+            ),
+          if (media.isNotEmpty) _buildMediaGallery(media),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMediaGallery(List<PostMediaItem> media) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -873,11 +987,7 @@ class _CommunityPageState extends State<CommunityPage> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: item.mediaType == 'video'
-                  ? Container(
-                      width: 260,
-                      color: const Color(0xFFE9EEF6),
-                      child: const Center(child: Icon(Icons.play_circle_fill_rounded, size: 48, color: Color(0xFF555555))),
-                    )
+                  ? VideoThumb(url: item.url, width: 260, height: 180, borderRadius: BorderRadius.zero)
                   : Image.network(
                       item.url,
                       width: 260,
@@ -939,6 +1049,47 @@ class _CommunityPageState extends State<CommunityPage> {
   }
 }
 
+// ===================================================================
+// Comments: text, stickers, pictures, GIFs, videos, emoji reactions
+// ===================================================================
+
+const int _maxCommentImageBytes = 10 * 1024 * 1024;
+const int _maxCommentVideoBytes = 30 * 1024 * 1024;
+
+void _showImageDialog(BuildContext context, String url) {
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(12),
+      child: GestureDetector(
+        onTap: () => Navigator.pop(dialogContext),
+        child: InteractiveViewer(
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const Padding(
+              padding: EdgeInsets.all(40),
+              child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 50),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+void _showVideoDialog(BuildContext context, String url) {
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(12),
+      child: SizedBox(height: 450, child: VideoViewer(key: ValueKey(url), url: url)),
+    ),
+  );
+}
+
 class _CommentsSheet extends StatefulWidget {
   final CommunityPost post;
   final VoidCallback onCommentAdded;
@@ -950,17 +1101,41 @@ class _CommentsSheet extends StatefulWidget {
 }
 
 class _CommentData {
+  final int id;
   final int? authorId;
   final String authorName;
+  final String? authorPhoto;
   final String content;
+  final String sticker;
+  final String? mediaUrl;
+  final String mediaType;
   final DateTime createdAt;
-  _CommentData({required this.authorId, required this.authorName, required this.content, required this.createdAt});
+  List<Map<String, dynamic>> reactions;
+
+  _CommentData({
+    required this.id,
+    required this.authorId,
+    required this.authorName,
+    required this.authorPhoto,
+    required this.content,
+    required this.sticker,
+    required this.mediaUrl,
+    required this.mediaType,
+    required this.createdAt,
+    required this.reactions,
+  });
 
   factory _CommentData.fromJson(Map<String, dynamic> json) => _CommentData(
+        id: (json['id'] as num).toInt(),
         authorId: (json['author_id'] as num?)?.toInt(),
         authorName: json['author_name']?.toString() ?? 'Unknown',
+        authorPhoto: json['author_photo']?.toString(),
         content: json['content']?.toString() ?? '',
+        sticker: json['sticker']?.toString() ?? '',
+        mediaUrl: json['media_url']?.toString(),
+        mediaType: json['media_type']?.toString() ?? '',
         createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+        reactions: parseReactions(json['reactions']),
       );
 }
 
@@ -969,15 +1144,35 @@ class _CommentsSheetState extends State<_CommentsSheet> {
   bool _loading = true;
   bool _sending = false;
   final TextEditingController _commentCtrl = TextEditingController();
+  Timer? _poll;
+
+  File? _attachment;
+  String _attachmentKind = ''; // 'image' or 'video'
 
   @override
   void initState() {
     super.initState();
     _loadComments();
+    // Pick up new comments and reactions from other people.
+    _poll = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (!_sending) _loadComments(silent: true);
+    });
   }
 
-  Future<void> _loadComments() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _loadComments({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final list = await CommunityService.listComments(widget.post.id);
       if (!mounted) return;
@@ -988,24 +1183,284 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     } on CommunityException catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (!silent) _snack(e.message);
     }
   }
 
-  Future<void> _submitComment() async {
-    if (_commentCtrl.text.trim().isEmpty) return;
+  Future<void> _submit() async {
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty && _attachment == null) return;
     setState(() => _sending = true);
     try {
-      await CommunityService.createComment(widget.post.id, _commentCtrl.text.trim());
-      _commentCtrl.clear();
-      widget.onCommentAdded();
-      await _loadComments();
-    } on CommunityException catch (e) {
+      await CommunityService.createComment(widget.post.id, content: text, media: _attachment);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      _commentCtrl.clear();
+      setState(() {
+        _attachment = null;
+        _attachmentKind = '';
+      });
+      widget.onCommentAdded();
+      await _loadComments(silent: true);
+    } on CommunityException catch (e) {
+      _snack(e.message);
     }
     if (!mounted) return;
     setState(() => _sending = false);
+  }
+
+  Future<void> _sendSticker() async {
+    final key = await showStickerPicker(context);
+    if (key == null || !mounted) return;
+    setState(() => _sending = true);
+    try {
+      await CommunityService.createComment(widget.post.id, sticker: key);
+      widget.onCommentAdded();
+      await _loadComments(silent: true);
+    } on CommunityException catch (e) {
+      _snack(e.message);
+    }
+    if (!mounted) return;
+    setState(() => _sending = false);
+  }
+
+  // ------------------------------------------------------------ attachments
+
+  void _setAttachment(File file, String kind) {
+    final size = file.lengthSync();
+    if (kind == 'video' && size > _maxCommentVideoBytes) {
+      _snack('That video is larger than 30MB. Please choose a shorter one.');
+      return;
+    }
+    if (kind == 'image' && size > _maxCommentImageBytes) {
+      _snack('That picture is larger than 10MB. Please choose a smaller one.');
+      return;
+    }
+    setState(() {
+      _attachment = file;
+      _attachmentKind = kind;
+    });
+  }
+
+  Future<void> _openAttachMenu() async {
+    FocusScope.of(context).unfocus();
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 18),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _attachOption(sheetContext, 'photo', Icons.photo_library_rounded, 'Photo', const Color(0xFF7E57C2)),
+              _attachOption(sheetContext, 'gif', Icons.gif_box_rounded, 'GIF', const Color(0xFF2563EB)),
+              _attachOption(sheetContext, 'video', Icons.videocam_rounded, 'Video', const Color(0xFFE91E63)),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    try {
+      if (choice == 'photo') {
+        final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 1600);
+        if (x != null) _setAttachment(File(x.path), 'image');
+      } else if (choice == 'video') {
+        final x = await ImagePicker().pickVideo(source: ImageSource.gallery);
+        if (x != null) _setAttachment(File(x.path), 'video');
+      } else if (choice == 'gif') {
+        final files = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['gif']);
+        if (!mounted) return;
+        for (final f in files) {
+          final path = f.path;
+          if (path != null) _setAttachment(File(path), 'image');
+          break;
+        }
+      }
+    } catch (_) {
+      _snack('Could not open your files.');
+    }
+  }
+
+  Widget _attachOption(BuildContext context, String value, IconData icon, String label, Color color) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.pop(context, value),
+      child: SizedBox(
+        width: 80,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white),
+            ),
+            const SizedBox(height: 6),
+            Text(label, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------- reactions
+
+  Future<void> _react(_CommentData c, String emoji) async {
+    try {
+      final reactions = await CommunityService.reactToComment(c.id, emoji);
+      if (!mounted) return;
+      setState(() => c.reactions = parseReactions(reactions));
+    } on CommunityException catch (e) {
+      _snack(e.message);
+    }
+  }
+
+  Future<void> _pickReaction(_CommentData c) async {
+    final emoji = await showReactionPicker(context, current: myReaction(c.reactions));
+    if (emoji != null) _react(c, emoji);
+  }
+
+  void _openProfile(_CommentData c) {
+    final id = c.authorId;
+    if (id == null) return;
+    showUserProfileSheet(context, userId: id, name: c.authorName, photoUrl: c.authorPhoto);
+  }
+
+  // ------------------------------------------------------------------ build
+
+  Widget _commentMedia(_CommentData c) {
+    final url = c.mediaUrl;
+    if (url == null || url.isEmpty) return const SizedBox.shrink();
+    if (c.mediaType == 'video') {
+      return GestureDetector(
+        onTap: () => _showVideoDialog(context, url),
+        child: VideoThumb(url: url, width: 230, height: 150),
+      );
+    }
+    return GestureDetector(
+      onTap: () => _showImageDialog(context, url),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.network(
+          url,
+          width: 230,
+          height: 170,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            width: 230,
+            height: 100,
+            color: const Color(0xFFE9EEF6),
+            child: const Icon(Icons.broken_image_outlined, color: Colors.grey),
+          ),
+          loadingBuilder: (context, child, progress) => progress == null
+              ? child
+              : Container(width: 230, height: 170, color: const Color(0xFFE9EEF6), child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
+        ),
+      ),
+    );
+  }
+
+  Widget _commentTile(_CommentData c) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => _openProfile(c),
+          child: UserAvatar(name: c.authorName, photoUrl: c.authorPhoto, radius: 17),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: () => _pickReaction(c),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: () => _openProfile(c),
+                        child: Text(c.authorName, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(_timeAgo(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+                if (c.content.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(c.content, style: const TextStyle(fontSize: 13.5)),
+                ],
+                if (c.sticker.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  StickerView(stickerKey: c.sticker, size: 110),
+                ],
+                if (c.mediaUrl != null && c.mediaUrl!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _commentMedia(c),
+                ],
+                ReactionBar(reactions: c.reactions, onToggle: (e) => _react(c, e)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: InkWell(
+                    onTap: () => _pickReaction(c),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.add_reaction_outlined, size: 15, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text('React', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _attachmentPreview() {
+    final file = _attachment;
+    if (file == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: _attachmentKind == 'video'
+                  ? VideoThumb(file: file, width: 76, height: 76, showPlay: false, borderRadius: BorderRadius.zero)
+                  : Image.file(file, width: 76, height: 76, fit: BoxFit.cover),
+            ),
+            if (_attachmentKind == 'video')
+              const Positioned(left: 5, bottom: 5, child: Icon(Icons.videocam_rounded, color: Colors.white, size: 16)),
+            Positioned(
+              top: -6,
+              right: -6,
+              child: GestureDetector(
+                onTap: () => setState(() {
+                  _attachment = null;
+                  _attachmentKind = '';
+                }),
+                child: const CircleAvatar(radius: 10, backgroundColor: Colors.black54, child: Icon(Icons.close, size: 12, color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1028,61 +1483,40 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: _comments.length,
                         separatorBuilder: (_, _) => const Divider(height: 20),
-                        itemBuilder: (context, i) {
-                          final c = _comments[i];
-                          // Tap a comment's author to open their profile.
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: c.authorId == null
-                                ? null
-                                : () => showUserProfileSheet(context, userId: c.authorId!, name: c.authorName),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CircleAvatar(
-                                  backgroundColor: const Color(0xFF667EEA),
-                                  radius: 16,
-                                  child: Text(c.authorName.isNotEmpty ? c.authorName[0].toUpperCase() : '?', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Text(c.authorName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                          const SizedBox(width: 6),
-                                          Text(_timeAgo(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(c.content, style: const TextStyle(fontSize: 13.5)),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                        itemBuilder: (context, i) => _commentTile(_comments[i]),
                       ),
           ),
+          _attachmentPreview(),
           Padding(
-            padding: EdgeInsets.fromLTRB(16, 10, 16, MediaQuery.of(context).viewInsets.bottom + 10),
+            padding: EdgeInsets.fromLTRB(6, 6, 8, MediaQuery.of(context).viewInsets.bottom + 10),
             child: Row(
               children: [
+                IconButton(
+                  tooltip: 'Add a photo, GIF or video',
+                  onPressed: _sending ? null : _openAttachMenu,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Stickers',
+                  onPressed: _sending ? null : _sendSticker,
+                  icon: const Icon(Icons.emoji_emotions_outlined),
+                ),
                 Expanded(
                   child: TextField(
                     controller: _commentCtrl,
+                    minLines: 1,
+                    maxLines: 4,
+                    textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
                       hintText: 'Write a comment...',
+                      isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
                     ),
                   ),
                 ),
                 IconButton(
-                  onPressed: _sending ? null : _submitComment,
+                  onPressed: _sending ? null : _submit,
                   icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded, color: Color(0xFF007BFF)),
                 ),
               ],

@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     "chat",
     "events",
     "notifications",
+    "circles",
 ]
 
 # Custom user model (accounts.User) — must be set before the first
@@ -109,7 +110,7 @@ LOGOUT_REDIRECT_URL = "dashboard:login"
 # now; swap for JWT later if the app needs refresh tokens.
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.TokenAuthentication",
+        "accounts.authentication.LastSeenTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [

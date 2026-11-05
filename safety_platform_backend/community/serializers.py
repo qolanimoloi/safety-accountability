@@ -1,15 +1,47 @@
-from .models import PostMedia, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS, MAX_POST_MEDIA_SIZE_BYTES
 from rest_framework import serializers
-from .models import CommunityPost, PostComment, PostReport
+
+from accounts.reactions import summarize
+
+from .models import (
+    ALLOWED_IMAGE_EXTENSIONS,
+    ALLOWED_VIDEO_EXTENSIONS,
+    COMMENT_IMAGE_EXTENSIONS,
+    COMMENT_VIDEO_EXTENSIONS,
+    MAX_COMMENT_IMAGE_BYTES,
+    MAX_COMMENT_VIDEO_BYTES,
+    MAX_POST_MEDIA_SIZE_BYTES,
+    CommunityPost,
+    PostComment,
+    PostMedia,
+    PostReport,
+)
+
+
+def _file_ext(name):
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+
+def _photo_url(user, request):
+    photo = getattr(user, "profile_photo", None) if user else None
+    if not photo:
+        return None
+    url = photo.url
+    return request.build_absolute_uri(url) if request else url
 
 
 class PostCommentSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     author_id = serializers.SerializerMethodField()
+    author_photo = serializers.SerializerMethodField()
+    media_url = serializers.SerializerMethodField()
+    reactions = serializers.SerializerMethodField()
 
     class Meta:
         model = PostComment
-        fields = ["id", "author_id", "author_name", "content", "created_at"]
+        fields = [
+            "id", "author_id", "author_name", "author_photo", "content",
+            "sticker", "media_url", "media_type", "reactions", "created_at",
+        ]
         read_only_fields = fields
 
     def get_author_name(self, obj):
@@ -18,11 +50,63 @@ class PostCommentSerializer(serializers.ModelSerializer):
     def get_author_id(self, obj):
         return obj.author_id
 
+    def get_author_photo(self, obj):
+        return _photo_url(obj.author, self.context.get("request"))
+
+    def get_media_url(self, obj):
+        if not obj.media:
+            return None
+        url = obj.media.url
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request else url
+
+    def get_reactions(self, obj):
+        request = self.context.get("request")
+        user_id = request.user.id if request else None
+        return summarize(obj.reactions.all(), user_id, request)
+
 
 class PostCommentCreateSerializer(serializers.ModelSerializer):
+    content = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    sticker = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    media = serializers.FileField(required=False, allow_null=True)
+
     class Meta:
         model = PostComment
-        fields = ["content"]
+        fields = ["content", "sticker", "media"]
+
+    def validate_sticker(self, value):
+        value = value.strip()
+        if any(ch in value for ch in "\r\n\t"):
+            raise serializers.ValidationError("That sticker is not valid.")
+        return value
+
+    def validate_media(self, f):
+        if f is None:
+            return f
+        ext = _file_ext(f.name)
+        if ext in COMMENT_IMAGE_EXTENSIONS:
+            if f.size > MAX_COMMENT_IMAGE_BYTES:
+                raise serializers.ValidationError("That picture is too large. Please choose one under 10MB.")
+        elif ext in COMMENT_VIDEO_EXTENSIONS:
+            if f.size > MAX_COMMENT_VIDEO_BYTES:
+                raise serializers.ValidationError("That video is too large. Please choose one under 30MB.")
+        else:
+            raise serializers.ValidationError("Only pictures (JPG, PNG, GIF, WEBP) and videos (MP4, MOV) can be added.")
+        return f
+
+    def validate(self, data):
+        content = (data.get("content") or "").strip()
+        if not content and not data.get("sticker") and not data.get("media"):
+            raise serializers.ValidationError({"content": "Write something, or add a sticker, picture or video."})
+        data["content"] = content
+        return data
+
+    def create(self, validated_data):
+        media = validated_data.get("media")
+        if media:
+            validated_data["media_type"] = "video" if _file_ext(media.name) in COMMENT_VIDEO_EXTENSIONS else "image"
+        return super().create(validated_data)
 
 
 class PostMediaSerializer(serializers.ModelSerializer):
@@ -39,13 +123,6 @@ class PostMediaSerializer(serializers.ModelSerializer):
 
 
 class CommunityPostSerializer(serializers.ModelSerializer):
-    """
-    What the feed (GET /api/community/posts/) returns. author_name/
-    author_avatar are derived server-side rather than trusted from the
-    client, same reasoning as is_official — a user can't post pretending
-    to be someone else.
-    """
-
     author_name = serializers.SerializerMethodField()
     author_avatar = serializers.SerializerMethodField()
     author_id = serializers.SerializerMethodField()
@@ -59,6 +136,7 @@ class CommunityPostSerializer(serializers.ModelSerializer):
     media = PostMediaSerializer(many=True, read_only=True)
     distance_km = serializers.SerializerMethodField()
     liked_by_me = serializers.SerializerMethodField()
+    shared_from = serializers.SerializerMethodField()
 
     class Meta:
         model = CommunityPost
@@ -66,7 +144,7 @@ class CommunityPostSerializer(serializers.ModelSerializer):
             "id", "author_name", "author_avatar", "author_id", "author_photo", "post_type", "post_type_display",
             "category", "category_display", "content", "media",
             "location_description", "latitude", "longitude",
-            "is_official", "is_quick_alert", "created_at",
+            "is_official", "is_quick_alert", "is_repost", "shared_from", "created_at",
             "likes_count", "comments_count", "shares_count", "is_trending",
             "distance_km", "liked_by_me",
         ]
@@ -76,8 +154,6 @@ class CommunityPostSerializer(serializers.ModelSerializer):
         return obj.author.full_name if obj.author else "Unknown"
 
     def get_author_avatar(self, obj):
-        # Matches the mock's two-letter avatar initials (e.g. "Sarah
-        # Johnson" -> "SJ") rather than requiring a real uploaded photo.
         if not obj.author or not obj.author.full_name:
             return "?"
         parts = obj.author.full_name.split()
@@ -87,12 +163,7 @@ class CommunityPostSerializer(serializers.ModelSerializer):
         return obj.author_id
 
     def get_author_photo(self, obj):
-        photo = getattr(obj.author, "profile_photo", None) if obj.author else None
-        if not photo:
-            return None
-        url = photo.url
-        request = self.context.get("request")
-        return request.build_absolute_uri(url) if request else url
+        return _photo_url(obj.author, self.context.get("request"))
 
     def get_distance_km(self, obj):
         request = self.context.get("request")
@@ -106,11 +177,30 @@ class CommunityPostSerializer(serializers.ModelSerializer):
             return False
         return obj.reactions.filter(user=request.user).exists()
 
+    def get_shared_from(self, obj):
+        """The original post inside a repost (None for ordinary posts)."""
+        if not obj.is_repost:
+            return None
+        original = obj.shared_from
+        if original is None or original.status != "published":
+            return {"unavailable": True}
+        request = self.context.get("request")
+        return {
+            "unavailable": False,
+            "id": original.id,
+            "author_id": original.author_id,
+            "author_name": original.author.full_name if original.author else "Unknown",
+            "author_photo": _photo_url(original.author, request),
+            "is_official": original.is_official,
+            "category_display": original.get_category_display(),
+            "content": original.content,
+            "created_at": original.created_at.isoformat(),
+            "media": PostMediaSerializer(original.media.all(), many=True, context=self.context).data,
+        }
+
 
 class CommunityPostCreateSerializer(serializers.ModelSerializer):
-    media = serializers.ListField(
-        child=serializers.FileField(), required=False, write_only=True
-    )
+    media = serializers.ListField(child=serializers.FileField(), required=False, write_only=True)
 
     class Meta:
         model = CommunityPost
@@ -118,7 +208,7 @@ class CommunityPostCreateSerializer(serializers.ModelSerializer):
 
     def validate_media(self, value):
         for f in value:
-            ext = f.name.rsplit(".", 1)[-1].lower() if "." in f.name else ""
+            ext = _file_ext(f.name)
             if ext not in ALLOWED_IMAGE_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS:
                 raise serializers.ValidationError(f"Unsupported file type: {f.name}")
             if f.size > MAX_POST_MEDIA_SIZE_BYTES:
@@ -129,16 +219,11 @@ class CommunityPostCreateSerializer(serializers.ModelSerializer):
         media_files = validated_data.pop("media", [])
         post = super().create(validated_data)
         for index, f in enumerate(media_files):
-            ext = f.name.rsplit(".", 1)[-1].lower() if "." in f.name else ""
+            ext = _file_ext(f.name)
             media_type = "video" if ext in ALLOWED_VIDEO_EXTENSIONS else "image"
             PostMedia.objects.create(
-                post=post,
-                file=f,
-                media_type=media_type,
-                original_filename=f.name,
-                content_type=getattr(f, "content_type", "") or "",
-                size_bytes=f.size,
-                order=index,
+                post=post, file=f, media_type=media_type, original_filename=f.name,
+                content_type=getattr(f, "content_type", "") or "", size_bytes=f.size, order=index,
             )
         return post
 

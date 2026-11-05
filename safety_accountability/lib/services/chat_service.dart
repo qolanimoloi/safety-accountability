@@ -73,14 +73,17 @@ class ChatService {
     return List<Map<String, dynamic>>.from(jsonDecode(res.body) as List);
   }
 
+  /// Sends text, a sticker, files, or a mix. A sticker is just its key (see stickers.dart).
   static Future<Map<String, dynamic>> sendMessage({
     required int conversationId,
     String text = '',
+    String sticker = '',
     List<File> media = const [],
   }) async {
     final request = http.MultipartRequest('POST', _u('/api/chat/conversations/$conversationId/messages/'));
     request.headers.addAll(await _authHeader());
     if (text.isNotEmpty) request.fields['text'] = text;
+    if (sticker.isNotEmpty) request.fields['sticker'] = sticker;
     for (final file in media) {
       request.files.add(await http.MultipartFile.fromPath('media', file.path));
     }
@@ -93,5 +96,50 @@ class ChatService {
   static Future<void> markRead(int conversationId) async {
     final res = await http.post(_u('/api/chat/conversations/$conversationId/read/'), headers: await _authHeader());
     _checkStatus(res);
+  }
+
+  /// React to a message. The same emoji again removes it; a different one replaces it.
+  /// Returns the message's updated reactions.
+  static Future<List<Map<String, dynamic>>> reactToMessage(int messageId, String emoji) async {
+    final res = await http.post(
+      _u('/api/chat/messages/$messageId/react/'),
+      headers: {...await _authHeader(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'emoji': emoji}),
+    );
+    _checkStatus(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from((body['reactions'] as List?) ?? const []);
+  }
+
+  /// {messageId: reactions} for the latest messages that have reactions.
+  static Future<Map<int, List<Map<String, dynamic>>>> listReactions(int conversationId) async {
+    final res = await http.get(_u('/api/chat/conversations/$conversationId/reactions/'), headers: await _authHeader());
+    _checkStatus(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final out = <int, List<Map<String, dynamic>>>{};
+    body.forEach((key, value) {
+      final id = int.tryParse(key);
+      if (id != null && value is List) {
+        out[id] = List<Map<String, dynamic>>.from(value);
+      }
+    });
+    return out;
+  }
+
+  /// Sets the group picture. Returns the updated conversation.
+  static Future<Map<String, dynamic>> setGroupIcon(int conversationId, File picture) async {
+    final request = http.MultipartRequest('POST', _u('/api/chat/conversations/$conversationId/icon/'));
+    request.headers.addAll(await _authHeader());
+    request.files.add(await http.MultipartFile.fromPath('icon', picture.path));
+    final streamed = await request.send();
+    final res = await http.Response.fromStream(streamed);
+    _checkStatus(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> removeGroupIcon(int conversationId) async {
+    final res = await http.delete(_u('/api/chat/conversations/$conversationId/icon/'), headers: await _authHeader());
+    _checkStatus(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }

@@ -4,17 +4,16 @@ import '../app_nav.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../services/contacts_service.dart';
+import '../services/profile_service.dart';
+import 'last_seen_switch.dart';
+import 'user_avatar.dart';
 
 const List<String> _relationships = ['Parent', 'Sibling', 'Partner', 'Friend', 'Roommate', 'Colleague', 'Other'];
 
-String _initialsOf(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-  if (parts.isEmpty) return '?';
-  if (parts.length == 1) return parts[0][0].toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-/// Opens a small profile with "Start chat" and "Add as emergency contact".
+/// Opens a person's profile: picture, name, last seen, and the buttons
+/// "Start chat" and "Add as emergency contact".
+/// [name], [photoUrl] and [subtitle] are shown straight away; the rest is
+/// loaded from the server a moment later.
 Future<void> showUserProfileSheet(
   BuildContext context, {
   required int userId,
@@ -27,6 +26,7 @@ Future<void> showUserProfileSheet(
   if (!context.mounted) return;
   await showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
     builder: (_) => _UserProfileSheet(userId: userId, name: name, photoUrl: photoUrl, subtitle: subtitle, isMe: isMe),
   );
@@ -47,6 +47,55 @@ class _UserProfileSheet extends StatefulWidget {
 
 class _UserProfileSheetState extends State<_UserProfileSheet> {
   bool _busy = false;
+  PublicProfile? _profile;
+  bool _loadingProfile = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final p = await ProfileService.fetch(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _profile = p;
+        _loadingProfile = false;
+      });
+    } on ProfileException {
+      if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  String get _name => _profile?.name.isNotEmpty == true ? _profile!.name : widget.name;
+  String? get _photo => _profile?.photoUrl ?? widget.photoUrl;
+
+  void _viewPhoto() {
+    final photo = _photo;
+    if (photo == null || photo.isEmpty) return;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(dialogContext),
+          child: InteractiveViewer(
+            child: Image.network(
+              photo,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const Padding(
+                padding: EdgeInsets.all(40),
+                child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 50),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _startChat() async {
     final messenger = ScaffoldMessenger.of(context);
@@ -68,7 +117,7 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
     final relationship = await showDialog<String>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
-        title: Text('How do you know ${widget.name}?'),
+        title: Text('How do you know $_name?'),
         children: _relationships
             .map((r) => SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, r), child: Text(r)))
             .toList(),
@@ -81,7 +130,7 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
       await ContactsService.addUserAsContact(widget.userId, relationship: relationship);
       nav.pop();
       messenger.showSnackBar(
-        SnackBar(content: Text('Request sent. ${widget.name} will be your emergency contact once they accept.')),
+        SnackBar(content: Text('Request sent. $_name will be your emergency contact once they accept.')),
       );
     } on ContactsException catch (e) {
       if (mounted) setState(() => _busy = false);
@@ -89,33 +138,65 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
     }
   }
 
+  Widget _statusLine() {
+    final p = _profile;
+    if (p == null) {
+      return Text(_loadingProfile ? 'Loading…' : '', style: const TextStyle(fontSize: 12.5, color: Colors.grey));
+    }
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (p.online) ...[
+          const Icon(Icons.circle, size: 9, color: Color(0xFF28A745)),
+          const SizedBox(width: 5),
+        ],
+        Text(
+          p.lastSeenLabel,
+          style: TextStyle(fontSize: 12.5, color: p.online ? const Color(0xFF1E7E34) : Colors.grey, fontWeight: p.online ? FontWeight.w600 : FontWeight.normal),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final photo = widget.photoUrl;
+    final official = _profile?.isOfficial == true;
+    final subtitle = widget.subtitle ?? (official ? 'Verified official account' : null);
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(24, 22, 24, 22 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
-              radius: 42,
-              backgroundColor: const Color(0xFF667EEA),
-              backgroundImage: (photo != null && photo.isNotEmpty) ? NetworkImage(photo) : null,
-              child: (photo != null && photo.isNotEmpty)
-                  ? null
-                  : Text(_initialsOf(widget.name), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            GestureDetector(
+              onTap: _viewPhoto,
+              child: UserAvatar(name: _name, photoUrl: _photo, radius: 44),
             ),
             const SizedBox(height: 12),
-            Text(widget.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            if (widget.subtitle != null) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(_name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                ),
+                if (official) ...[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.verified_rounded, size: 20, color: Color(0xFF007BFF)),
+                ],
+              ],
+            ),
+            if (subtitle != null) ...[
               const SizedBox(height: 4),
-              Text(widget.subtitle!, style: const TextStyle(fontSize: 12.5, color: Colors.grey)),
+              Text(subtitle, style: const TextStyle(fontSize: 12.5, color: Colors.grey)),
             ],
+            const SizedBox(height: 6),
+            _statusLine(),
             const SizedBox(height: 20),
-            if (widget.isMe)
-              const Text('This is you.', style: TextStyle(color: Colors.grey))
-            else ...[
+            if (widget.isMe) ...[
+              const Text('This is you.', style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 8),
+              const LastSeenSwitch(),
+            ] else ...[
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(

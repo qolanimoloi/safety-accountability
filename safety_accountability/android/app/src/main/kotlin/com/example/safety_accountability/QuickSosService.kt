@@ -58,7 +58,7 @@ class QuickSosService : Service() {
         private const val ID_ALERT = 7102
 
                 private const val PRESS_WINDOW_MS = 3000L
-        private const val REQUIRED_PRESSES = 4
+        private const val REQUIRED_PRESSES = 2
         private const val MIN_GAP_MS = 120L
         private const val COUNTDOWN_SECONDS = 3
         private const val COOLDOWN_MS = 30_000L
@@ -220,7 +220,7 @@ class QuickSosService : Service() {
 
                     val body = JSONObject()
                         .put("incident_type", "other")
-                        .put("location_description", "QUICK SOS - power button x4")
+                        .put("location_description", "QUICK SOS - power button x2")
                     if (loc != null) {
                         body.put("latitude", Math.round(loc.latitude * 1e6) / 1e6)
                         body.put("longitude", Math.round(loc.longitude * 1e6) / 1e6)
@@ -338,7 +338,7 @@ class QuickSosService : Service() {
         NotificationCompat.Builder(this, CH_STATUS)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("Quick SOS is on")
-            .setContentText("Press the power button 4 times quickly to alert admin.")
+            .setContentText("Double-press the power button quickly to alert admin.")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openAppPendingIntent())

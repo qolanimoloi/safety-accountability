@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -8,11 +9,16 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:video_player/video_player.dart';
 
 import '../services/chat_service.dart';
 import '../services/contacts_service.dart';
+import '../services/profile_service.dart';
 import 'location_field.dart' show CurrentLocation, PlaceSearchException;
+import 'reactions.dart';
+import 'stickers.dart';
+import 'user_avatar.dart';
+import 'user_profile_sheet.dart';
+import 'video_viewer.dart';
 
 const Color _red = Color(0xFFDC2626);
 const Color _purple = Color(0xFF667EEA);
@@ -24,13 +30,6 @@ final RegExp _locationRegex =
     RegExp(r'https://www\.google\.com/maps/search/\?api=1&query=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)');
 
 // ----------------------------------------------------------------- helpers
-
-String _initialsOf(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-  if (parts.isEmpty) return '?';
-  if (parts.length == 1) return parts[0][0].toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
 
 String _fmtTime(String? iso) {
   final d = DateTime.tryParse(iso ?? '')?.toLocal();
@@ -134,6 +133,8 @@ class _SheetFrame extends StatelessWidget {
   }
 }
 
+/// A chat's picture: the group icon, or the other person's profile photo
+/// (their initials only when they have no photo).
 class _ConversationAvatar extends StatelessWidget {
   final Map<String, dynamic> conversation;
   final double radius;
@@ -142,13 +143,29 @@ class _ConversationAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isGroup = conversation['is_group'] == true;
-    return CircleAvatar(
+    final url = conversation['avatar_url']?.toString();
+    if (!isGroup) {
+      return UserAvatar(
+        name: conversation['display_name']?.toString() ?? '',
+        photoUrl: url,
+        radius: radius,
+        color: _red,
+      );
+    }
+    final groupCircle = CircleAvatar(
       radius: radius,
-      backgroundColor: isGroup ? _purple : _red,
-      child: isGroup
-          ? Icon(Icons.groups_rounded, color: Colors.white, size: radius)
-          : Text(conversation['avatar_initials']?.toString() ?? '?',
-              style: TextStyle(color: Colors.white, fontSize: radius * 0.65, fontWeight: FontWeight.w600)),
+      backgroundColor: _purple,
+      child: Icon(Icons.groups_rounded, color: Colors.white, size: radius),
+    );
+    if (url == null || url.isEmpty) return groupCircle;
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: radius * 2,
+        height: radius * 2,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => groupCircle,
+      ),
     );
   }
 }
@@ -365,7 +382,12 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
   Duration _recElapsed = Duration.zero;
   Timer? _recTimer;
 
+  // The other person in a one-to-one chat (for "last seen" under their name).
+  PublicProfile? _other;
+  Timer? _profileTimer;
+
   int get _conversationId => widget.conversation['id'] as int;
+  bool get _isGroup => widget.conversation['is_group'] == true;
 
   @override
   void initState() {
@@ -373,11 +395,14 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
     _loadMessages();
     ChatService.markRead(_conversationId).catchError((_) {});
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pollNew());
+    _loadOther();
+    _profileTimer = Timer.periodic(const Duration(seconds: 30), (_) => _loadOther());
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _profileTimer?.cancel();
     _recTimer?.cancel();
     _noticeTimer?.cancel();
     _recorder.dispose();
@@ -411,6 +436,19 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
     }
   }
 
+  Future<void> _loadOther() async {
+    if (_isGroup) return;
+    final id = (widget.conversation['other_member_id'] as num?)?.toInt();
+    if (id == null) return;
+    try {
+      final p = await ProfileService.fetch(id);
+      if (!mounted) return;
+      setState(() => _other = p);
+    } on ProfileException {
+      // Silent: the next refresh tries again.
+    }
+  }
+
   Future<void> _pollNew() async {
     if (_messages.isEmpty) {
       _loadMessages();
@@ -419,7 +457,18 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
     try {
       final lastId = _messages.last['id'] as int;
       final newer = await ChatService.listMessages(_conversationId, afterId: lastId);
-      if (!mounted || newer.isEmpty) return;
+      Map<int, List<Map<String, dynamic>>>? reactions;
+      try {
+        reactions = await ChatService.listReactions(_conversationId);
+      } on ChatException {
+        reactions = null;
+      }
+      if (!mounted) return;
+      final reactionsChanged = reactions != null && _applyReactions(reactions);
+      if (newer.isEmpty) {
+        if (reactionsChanged) setState(() {});
+        return;
+      }
       setState(() {
         final known = _messages.map((m) => m['id']).toSet();
         _messages = [..._messages, ...newer.where((m) => !known.contains(m['id']))];
@@ -430,20 +479,89 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
     }
   }
 
+  /// Copies other people's new reactions onto the messages already on screen.
+  /// Returns true if anything changed.
+  bool _applyReactions(Map<int, List<Map<String, dynamic>>> fresh) {
+    var changed = false;
+    final windowStart = _messages.length > 200 ? _messages[_messages.length - 200]['id'] as int : 0;
+    for (final m in _messages) {
+      final id = m['id'] as int;
+      if (id < windowStart) continue;
+      final latest = fresh[id] ?? <Map<String, dynamic>>[];
+      if (jsonEncode(m['reactions'] ?? const []) != jsonEncode(latest)) {
+        m['reactions'] = latest;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  Future<void> _react(Map<String, dynamic> message, String emoji) async {
+    try {
+      final reactions = await ChatService.reactToMessage(message['id'] as int, emoji);
+      if (!mounted) return;
+      setState(() => message['reactions'] = reactions);
+    } on ChatException catch (e) {
+      _showNotice(e.message);
+    }
+  }
+
+  Future<void> _pickReaction(Map<String, dynamic> message) async {
+    final emoji = await showReactionPicker(context, current: myReaction(message['reactions']));
+    if (emoji != null) _react(message, emoji);
+  }
+
+  void _openProfileOf(Map<String, dynamic> message) {
+    final id = (message['sender_id'] as num?)?.toInt();
+    if (id == null) return;
+    showUserProfileSheet(
+      context,
+      userId: id,
+      name: message['sender_name']?.toString() ?? '',
+      photoUrl: message['sender_photo']?.toString(),
+    );
+  }
+
+  /// Tap the chat's name: a person's profile (with last seen), or the group's info.
+  Future<void> _openHeader() async {
+    if (_isGroup) {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (_) => _GroupInfoSheet(
+          conversation: widget.conversation,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        ),
+      );
+      return;
+    }
+    final id = (widget.conversation['other_member_id'] as num?)?.toInt();
+    if (id == null) return;
+    showUserProfileSheet(
+      context,
+      userId: id,
+      name: widget.conversation['display_name']?.toString() ?? '',
+      photoUrl: widget.conversation['avatar_url']?.toString(),
+    );
+  }
+
   // --------------------------------------------------------------- sending
 
-  Future<void> _send({String? textOverride, List<File> extra = const []}) async {
+  Future<void> _send({String? textOverride, String sticker = '', List<File> extra = const []}) async {
     if (_sending) return;
     final text = (textOverride ?? _text.text).trim();
     final files = <File>[if (textOverride == null) ..._pending.map((p) => p.file), ...extra];
-    if (text.isEmpty && files.isEmpty) return;
+    if (text.isEmpty && files.isEmpty && sticker.isEmpty) return;
 
     setState(() {
       _sending = true;
       _notice = null;
     });
     try {
-      final sent = await ChatService.sendMessage(conversationId: _conversationId, text: text, media: files);
+      final sent = await ChatService.sendMessage(conversationId: _conversationId, text: text, sticker: sticker, media: files);
       if (!mounted) return;
       setState(() {
         if (!_messages.any((m) => m['id'] == sent['id'])) _messages = [..._messages, sent];
@@ -507,6 +625,8 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
               _attachOption(sheetContext, 'document', Icons.insert_drive_file_rounded, 'Document', const Color(0xFF2563EB)),
               _attachOption(sheetContext, 'audio', Icons.headphones_rounded, 'Audio', const Color(0xFFFF9800)),
               _attachOption(sheetContext, 'location', Icons.location_on_rounded, 'Location', const Color(0xFF28A745)),
+              _attachOption(sheetContext, 'sticker', Icons.emoji_emotions_rounded, 'Sticker', const Color(0xFFF59E0B)),
+              _attachOption(sheetContext, 'gif', Icons.gif_box_rounded, 'GIF', const Color(0xFF2563EB)),
             ],
           ),
         ),
@@ -532,7 +652,20 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
       case 'location':
         await _shareLocation();
         break;
+      case 'sticker':
+        await _sendSticker();
+        break;
+      case 'gif':
+        // Picked as a file so the GIF keeps its animation.
+        await _pickFiles(['gif']);
+        break;
     }
+  }
+
+  Future<void> _sendSticker() async {
+    final key = await showStickerPicker(context);
+    if (key == null || !mounted) return;
+    await _send(textOverride: '', sticker: key);
   }
 
   Widget _attachOption(BuildContext context, String value, IconData icon, String label, Color color) {
@@ -796,15 +929,34 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
           child: Row(
             children: [
               IconButton(icon: const Icon(Icons.arrow_back), onPressed: widget.onBack),
-              _ConversationAvatar(conversation: widget.conversation, radius: 18),
-              const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    if (isGroup) Text('${widget.conversation['member_count'] ?? 0} members', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: _openHeader,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        _ConversationAvatar(conversation: widget.conversation, radius: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                              if (isGroup)
+                                Text('${widget.conversation['member_count'] ?? 0} members · tap for info', style: const TextStyle(fontSize: 12, color: Colors.grey))
+                              else if (_other != null)
+                                Text(
+                                  _other!.lastSeenLabel,
+                                  style: TextStyle(fontSize: 12, color: _other!.online ? const Color(0xFF1E7E34) : Colors.grey),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -821,7 +973,16 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
                       controller: _scroll,
                       padding: const EdgeInsets.all(16),
                       itemCount: _messages.length,
-                      itemBuilder: (context, index) => _MessageBubble(message: _messages[_messages.length - 1 - index]),
+                      itemBuilder: (context, index) {
+                        final message = _messages[_messages.length - 1 - index];
+                        return _MessageBubble(
+                          message: message,
+                          isGroup: isGroup,
+                          onLongPress: () => _pickReaction(message),
+                          onReactionTap: (emoji) => _react(message, emoji),
+                          onOpenProfile: () => _openProfileOf(message),
+                        );
+                      },
                     ),
         ),
         if (_notice != null)
@@ -844,7 +1005,18 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
 
 class _MessageBubble extends StatelessWidget {
   final Map<String, dynamic> message;
-  const _MessageBubble({required this.message});
+  final bool isGroup;
+  final VoidCallback onLongPress;
+  final ValueChanged<String> onReactionTap;
+  final VoidCallback onOpenProfile;
+
+  const _MessageBubble({
+    required this.message,
+    required this.isGroup,
+    required this.onLongPress,
+    required this.onReactionTap,
+    required this.onOpenProfile,
+  });
 
   void _openViewer(BuildContext context, List<Map<String, dynamic>> items, int index) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => _MediaViewerPage(items: items, initialIndex: index)));
@@ -878,12 +1050,7 @@ class _MessageBubble extends StatelessWidget {
   Widget _videoThumb(BuildContext context, Map<String, dynamic> m, List<Map<String, dynamic>> visual) {
     return GestureDetector(
       onTap: () => _openViewer(context, visual, visual.indexOf(m)),
-      child: Container(
-        width: 210,
-        height: 130,
-        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(10)),
-        child: const Center(child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 54)),
-      ),
+      child: VideoThumb(url: m['url']?.toString() ?? '', width: 210, height: 130),
     );
   }
 
@@ -968,6 +1135,7 @@ class _MessageBubble extends StatelessWidget {
     var text = message['text']?.toString() ?? '';
     final media = ((message['media'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
     final senderName = message['sender_name']?.toString() ?? '';
+    final sticker = message['sticker']?.toString() ?? '';
 
     final locationMatch = _locationRegex.firstMatch(text);
     if (locationMatch != null) {
@@ -978,41 +1146,63 @@ class _MessageBubble extends StatelessWidget {
       return k == 'image' || k == 'video';
     }).toList();
     final fg = sent ? Colors.white : Colors.black87;
+    final timeText = _fmtTime(message['created_at']?.toString());
 
-    final children = <Widget>[
-      if (!sent && senderName.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text(senderName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _purple)),
-        ),
-      for (final m in media)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: () {
-            switch (_mediaKind(m)) {
-              case 'video':
-                return _videoThumb(context, m, visual);
-              case 'audio':
-                return _AudioBubble(url: m['url']?.toString() ?? '', sent: sent);
-              case 'document':
-                return _documentTile(m, sent);
-              default:
-                return _imageThumb(context, m, visual);
-            }
-          }(),
-        ),
-      if (locationMatch != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: _locationCard(locationMatch, sent)),
-      if (text.isNotEmpty) Text(text, style: TextStyle(color: fg, fontSize: 14.5, height: 1.3)),
-      const SizedBox(height: 3),
-      Align(
-        alignment: Alignment.centerRight,
-        child: Text(_fmtTime(message['created_at']?.toString()), style: TextStyle(fontSize: 10, color: sent ? Colors.white70 : Colors.grey)),
-      ),
-    ];
+    // Tap the sender's name (or picture) to open their profile.
+    final nameLabel = (!sent && senderName.isNotEmpty)
+        ? GestureDetector(
+            onTap: onOpenProfile,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(senderName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _purple)),
+            ),
+          )
+        : null;
 
-    return Align(
-      alignment: sent ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+    Widget bubble;
+    if (sticker.isNotEmpty && text.isEmpty && media.isEmpty && locationMatch == null) {
+      // A sticker on its own: no bubble, just the sticker.
+      bubble = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: sent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (nameLabel != null) nameLabel,
+            StickerView(stickerKey: sticker, size: 130),
+            Padding(padding: const EdgeInsets.only(top: 2), child: Text(timeText, style: const TextStyle(fontSize: 10, color: Colors.grey))),
+          ],
+        ),
+      );
+    } else {
+      final children = <Widget>[
+        if (nameLabel != null) nameLabel,
+        if (sticker.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 6), child: StickerView(stickerKey: sticker, size: 110)),
+        for (final m in media)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: () {
+              switch (_mediaKind(m)) {
+                case 'video':
+                  return _videoThumb(context, m, visual);
+                case 'audio':
+                  return _AudioBubble(url: m['url']?.toString() ?? '', sent: sent);
+                case 'document':
+                  return _documentTile(m, sent);
+                default:
+                  return _imageThumb(context, m, visual);
+              }
+            }(),
+          ),
+        if (locationMatch != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: _locationCard(locationMatch, sent)),
+        if (text.isNotEmpty) Text(text, style: TextStyle(color: fg, fontSize: 14.5, height: 1.3)),
+        const SizedBox(height: 3),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(timeText, style: TextStyle(fontSize: 10, color: sent ? Colors.white70 : Colors.grey)),
+        ),
+      ];
+      bubble = Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.all(10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
@@ -1022,6 +1212,41 @@ class _MessageBubble extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+      );
+    }
+
+    // Press and hold anywhere on the message to react to it.
+    final column = Column(
+      crossAxisAlignment: sent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(onLongPress: onLongPress, child: bubble),
+        ReactionBar(reactions: message['reactions'], onToggle: onReactionTap),
+      ],
+    );
+
+    final showAvatar = !sent && isGroup;
+    return Align(
+      alignment: sent ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.86),
+        child: showAvatar
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: GestureDetector(
+                      onTap: onOpenProfile,
+                      child: UserAvatar(name: senderName, photoUrl: message['sender_photo']?.toString(), radius: 14),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(child: column),
+                ],
+              )
+            : column,
       ),
     );
   }
@@ -1190,7 +1415,7 @@ class _MediaViewerPageState extends State<_MediaViewerPage> {
           final m = items[i];
           final url = m['url']?.toString() ?? '';
           if (_mediaKind(m) == 'video') {
-            return _VideoPage(key: ValueKey(url), url: url, autoPlay: items.length == 1);
+            return VideoViewer(key: ValueKey(url), url: url, autoPlay: items.length == 1);
           }
           return InteractiveViewer(
             minScale: 1,
@@ -1206,82 +1431,6 @@ class _MediaViewerPageState extends State<_MediaViewerPage> {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _VideoPage extends StatefulWidget {
-  final String url;
-  final bool autoPlay;
-  const _VideoPage({super.key, required this.url, required this.autoPlay});
-
-  @override
-  State<_VideoPage> createState() => _VideoPageState();
-}
-
-class _VideoPageState extends State<_VideoPage> {
-  late final VideoPlayerController _controller;
-  bool _ready = false;
-  bool _failed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
-    _controller.initialize().then((_) {
-      if (!mounted) return;
-      setState(() => _ready = true);
-      if (widget.autoPlay) _controller.play();
-    }).catchError((_) {
-      if (mounted) setState(() => _failed = true);
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_failed) {
-      return const Center(child: Text('Could not play this video.', style: TextStyle(color: Colors.white70)));
-    }
-    if (!_ready) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
-    }
-    return GestureDetector(
-      onTap: () => _controller.value.isPlaying ? _controller.pause() : _controller.play(),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Center(
-            child: AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller)),
-          ),
-          ValueListenableBuilder<VideoPlayerValue>(
-            valueListenable: _controller,
-            builder: (context, value, _) => value.isPlaying
-                ? const SizedBox.shrink()
-                : Container(
-                    width: 70,
-                    height: 70,
-                    decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 48),
-                  ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
-            child: VideoProgressIndicator(
-              _controller,
-              allowScrubbing: true,
-              colors: const VideoProgressColors(playedColor: _red, bufferedColor: Colors.white38, backgroundColor: Colors.white24),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1304,6 +1453,7 @@ class _NewChatSheetState extends State<_NewChatSheet> {
   List<Map<String, dynamic>> _results = [];
   final Map<int, Map<String, dynamic>> _selected = {};
   bool _groupMode = false;
+  File? _groupIcon;
   bool _searching = false;
   bool _busy = false;
   String? _message;
@@ -1380,10 +1530,7 @@ class _NewChatSheetState extends State<_NewChatSheet> {
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: _purple,
-                    child: Text(_initialsOf(name), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
+                  UserAvatar(name: name, photoUrl: user['photo_url']?.toString(), radius: 22),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1396,6 +1543,11 @@ class _NewChatSheetState extends State<_NewChatSheet> {
                   ),
                 ],
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_rounded, color: _purple),
+              title: const Text('View profile'),
+              onTap: () => Navigator.pop(sheetContext, 'profile'),
             ),
             ListTile(
               leading: const Icon(Icons.chat_bubble_rounded, color: _purple),
@@ -1419,6 +1571,14 @@ class _NewChatSheetState extends State<_NewChatSheet> {
     );
     if (choice == null || !mounted) return;
     switch (choice) {
+      case 'profile':
+        await showUserProfileSheet(
+          context,
+          userId: user['id'] as int,
+          name: name,
+          photoUrl: user['photo_url']?.toString(),
+        );
+        break;
       case 'chat':
         await _startChat(user);
         break;
@@ -1468,6 +1628,15 @@ class _NewChatSheetState extends State<_NewChatSheet> {
     }
   }
 
+  Future<void> _pickGroupIcon() async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 1024);
+      if (x != null && mounted) setState(() => _groupIcon = File(x.path));
+    } catch (_) {
+      _setMessage('Could not open your photos.');
+    }
+  }
+
   Future<void> _createGroup() async {
     if (_selected.isEmpty) return;
     if (_groupName.text.trim().isEmpty) {
@@ -1479,11 +1648,19 @@ class _NewChatSheetState extends State<_NewChatSheet> {
       _message = null;
     });
     try {
-      final conversation = await ChatService.createConversation(
+      var conversation = await ChatService.createConversation(
         memberIds: _selected.keys.toList(),
         isGroup: true,
         name: _groupName.text.trim(),
       );
+      final icon = _groupIcon;
+      if (icon != null) {
+        try {
+          conversation = await ChatService.setGroupIcon(conversation['id'] as int, icon);
+        } on ChatException {
+          // The group is created; the picture can be added later from the group's info.
+        }
+      }
       if (!mounted) return;
       Navigator.pop(context, conversation);
     } on ChatException catch (e) {
@@ -1506,6 +1683,7 @@ class _NewChatSheetState extends State<_NewChatSheet> {
                   TextButton(
                     onPressed: () => setState(() {
                       _groupMode = false;
+                      _groupIcon = null;
                       _selected.clear();
                     }),
                     child: const Text('Cancel group'),
@@ -1517,9 +1695,26 @@ class _NewChatSheetState extends State<_NewChatSheet> {
           if (_groupMode)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: TextField(
-                controller: _groupName,
-                decoration: InputDecoration(hintText: 'Group name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: _busy ? null : _pickGroupIcon,
+                    child: _groupIcon != null
+                        ? ClipOval(child: Image.file(_groupIcon!, width: 48, height: 48, fit: BoxFit.cover))
+                        : const CircleAvatar(
+                            radius: 24,
+                            backgroundColor: _purple,
+                            child: Icon(Icons.add_a_photo_rounded, color: Colors.white, size: 20),
+                          ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _groupName,
+                      decoration: InputDecoration(hintText: 'Group name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                    ),
+                  ),
+                ],
               ),
             ),
           if (_selected.isNotEmpty)
@@ -1566,10 +1761,7 @@ class _NewChatSheetState extends State<_NewChatSheet> {
                           final name = u['name']?.toString() ?? '';
                           return ListTile(
                             onTap: _busy ? null : () => _onUserTap(u),
-                            leading: CircleAvatar(
-                              backgroundColor: _purple,
-                              child: Text(_initialsOf(name), style: const TextStyle(color: Colors.white)),
-                            ),
+                            leading: UserAvatar(name: name, photoUrl: u['photo_url']?.toString(), radius: 20),
                             title: Text(name),
                             subtitle: Text(u['email']?.toString() ?? ''),
                             trailing: _groupMode
@@ -1592,6 +1784,162 @@ class _NewChatSheetState extends State<_NewChatSheet> {
                       : Text('Create Group (${_selected.length})', style: const TextStyle(color: Colors.white)),
                 ),
               ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// ===================================================================
+// Group info: picture, name and members
+// ===================================================================
+
+class _GroupInfoSheet extends StatefulWidget {
+  final Map<String, dynamic> conversation;
+  final VoidCallback onChanged;
+  const _GroupInfoSheet({required this.conversation, required this.onChanged});
+
+  @override
+  State<_GroupInfoSheet> createState() => _GroupInfoSheetState();
+}
+
+class _GroupInfoSheetState extends State<_GroupInfoSheet> {
+  bool _busy = false;
+  String? _error;
+
+  int get _id => widget.conversation['id'] as int;
+
+  void _apply(Map<String, dynamic> updated) {
+    widget.conversation['icon_url'] = updated['icon_url'];
+    widget.conversation['avatar_url'] = updated['avatar_url'];
+    widget.conversation['members'] = updated['members'];
+    widget.onChanged();
+  }
+
+  Future<void> _changeIcon() async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 1024);
+      if (x == null || !mounted) return;
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
+      final updated = await ChatService.setGroupIcon(_id, File(x.path));
+      if (!mounted) return;
+      setState(() {
+        _apply(updated);
+        _busy = false;
+      });
+    } on ChatException catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.message;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not open your photos.';
+        });
+      }
+    }
+  }
+
+  Future<void> _removeIcon() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final updated = await ChatService.removeGroupIcon(_id);
+      if (!mounted) return;
+      setState(() {
+        _apply(updated);
+        _busy = false;
+      });
+    } on ChatException catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final members = ((widget.conversation['members'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    final hasIcon = (widget.conversation['icon_url']?.toString() ?? '').isNotEmpty;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      maxChildSize: 0.92,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (context, scrollController) => ListView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        children: [
+          Center(
+            child: Stack(
+              children: [
+                _ConversationAvatar(conversation: widget.conversation, radius: 46),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Material(
+                    color: _purple,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _busy ? null : _changeIcon,
+                      child: const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            widget.conversation['display_name']?.toString() ?? '',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text('${members.length} members', textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+            ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFB02A37), fontSize: 12.5)),
+            ),
+          if (hasIcon)
+            Center(child: TextButton(onPressed: _busy ? null : _removeIcon, child: const Text('Remove group picture'))),
+          const Divider(height: 28),
+          const Text('Members', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          const SizedBox(height: 4),
+          for (final m in members)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: UserAvatar(name: m['name']?.toString() ?? '', photoUrl: m['photo_url']?.toString(), radius: 20),
+              title: Text(m['name']?.toString() ?? ''),
+              onTap: () {
+                final id = (m['id'] as num?)?.toInt();
+                if (id == null) return;
+                showUserProfileSheet(context, userId: id, name: m['name']?.toString() ?? '', photoUrl: m['photo_url']?.toString());
+              },
             ),
         ],
       ),

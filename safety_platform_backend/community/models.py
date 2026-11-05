@@ -15,9 +15,19 @@ def post_media_upload_path(instance, filename):
     return f"community_posts/{instance.post_id or 'new'}/{filename}"
 
 
+def comment_media_upload_path(instance, filename):
+    return f"community_comments/{instance.post_id or 'new'}/{filename}"
+
+
 MAX_POST_MEDIA_SIZE_BYTES = 60 * 1024 * 1024  # 60MB, matches settings upload limits
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov"}
+
+# Comments can carry one picture, GIF or short video.
+COMMENT_IMAGE_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | {"gif", "webp"}
+COMMENT_VIDEO_EXTENSIONS = ALLOWED_VIDEO_EXTENSIONS
+MAX_COMMENT_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
+MAX_COMMENT_VIDEO_BYTES = 30 * 1024 * 1024  # 30MB
 
 
 class CommunityPost(models.Model):
@@ -68,8 +78,20 @@ class CommunityPost(models.Model):
 
     post_type = models.CharField(max_length=10, choices=POST_TYPE_CHOICES, default="alert")
     category = models.CharField(max_length=30, choices=CATEGORY_CHOICES, default="general_alert")
-    content = models.TextField()
-   
+    # May be empty on a repost that has no comment of its own.
+    content = models.TextField(blank=True)
+
+    # "Share on community": a repost is a new post that points at the original.
+    # is_repost stays True even if the original is later deleted, so the app
+    # can show "this post is no longer available" instead of a blank card.
+    is_repost = models.BooleanField(default=False)
+    shared_from = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reposts",
+    )
 
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
@@ -177,11 +199,28 @@ class PostComment(models.Model):
 
     post = models.ForeignKey(CommunityPost, related_name="comments", on_delete=models.CASCADE)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
-    content = models.TextField()
+    # A comment can be text, a sticker, a picture/GIF/video, or a mix.
+    content = models.TextField(blank=True)
+    media = models.FileField(upload_to=comment_media_upload_path, null=True, blank=True)
+    media_type = models.CharField(max_length=10, blank=True)  # "image" or "video"
+    sticker = models.CharField(max_length=32, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at"]
+
+
+class CommentReaction(models.Model):
+    """One emoji reaction per person per comment (like WhatsApp and Facebook)."""
+
+    comment = models.ForeignKey(PostComment, related_name="reactions", on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("comment", "user")
+        ordering = ["created_at", "id"]
 
 
 class PostShare(models.Model):

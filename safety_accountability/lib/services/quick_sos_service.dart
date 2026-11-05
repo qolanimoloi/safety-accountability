@@ -68,7 +68,7 @@ class QuickSosService {
       }
       return (
         ok: true,
-        message: 'Quick SOS is on. Press the power button 4 times quickly. If your phone opens the camera or another shortcut instead, turn that shortcut off in Settings.',
+        message: 'Quick SOS is on. Double-press the power button quickly. If your phone opens the camera or another shortcut instead, turn that shortcut off in Settings.',
         needsSettings: false,
       );
     } catch (_) {

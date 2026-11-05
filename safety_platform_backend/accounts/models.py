@@ -72,6 +72,14 @@ class User(AbstractUser):
     # used on two accounts. Empty when there is no picture.
     photo_hash = models.CharField(max_length=16, blank=True, default="", editable=False)
 
+    # When the person last used the app (saved automatically, at most once a
+    # minute) and whether other people may see it.
+    last_seen = models.DateTimeField(null=True, blank=True, editable=False)
+    show_last_seen = models.BooleanField(
+        default=True,
+        help_text="Lets other people see when this person was last active.",
+    )
+
     # Staff who can log into the web admin dashboard vs. ordinary app
     # users. is_staff (inherited) already gates Django admin; this is a
     # clearer, dashboard-specific flag so "who can see the dashboard"

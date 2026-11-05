@@ -3,6 +3,7 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/contacts_service.dart';
 import '../services/live_location_service.dart';
+import 'circles_section.dart';
 import '../l10n/generated/app_localizations.dart';
 
 const List<String> _relationshipKeys = ['parent', 'sibling', 'partner', 'friend', 'roommate', 'colleague', 'other'];
@@ -48,6 +49,7 @@ class _ContactsPageState extends State<ContactsPage> {
   bool _loading = true;
   String? _error;
   bool _sharingBusy = false;
+  final GlobalKey<CirclesSectionState> _circlesKey = GlobalKey<CirclesSectionState>();
 
   @override
   void initState() {
@@ -63,6 +65,7 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 
   Future<void> _loadContacts() async {
+    _circlesKey.currentState?.reload();
     setState(() {
       _loading = true;
       _error = null;
@@ -228,6 +231,8 @@ class _ContactsPageState extends State<ContactsPage> {
             _buildWhyBanner(context),
             const SizedBox(height: 12),
             _buildSharingCard(),
+            const SizedBox(height: 20),
+            CirclesSection(key: _circlesKey),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

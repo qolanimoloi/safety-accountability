@@ -62,7 +62,7 @@ class CommunityService {
           request.files.add(await http.MultipartFile.fromPath('media', file.path));
         }
       }
-      final streamed = await request.send().timeout(const Duration(seconds: 30));
+      final streamed = await request.send().timeout(const Duration(minutes: 3));
       final response = await http.Response.fromStream(streamed);
       return _handleMap(response);
     } on CommunityException {
@@ -98,17 +98,33 @@ class CommunityService {
     }
   }
 
-  static Future<Map<String, dynamic>> createComment(int postId, String content) async {
+  /// Adds a comment: text, a sticker (its key), and/or one picture, GIF or short video.
+  static Future<Map<String, dynamic>> createComment(
+    int postId, {
+    String content = '',
+    String sticker = '',
+    File? media,
+  }) async {
     final token = await _token();
     final uri = Uri.parse('${AuthService.baseUrl}/api/community/posts/$postId/comments/');
     try {
-      final response = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json', 'Authorization': 'Token $token'},
-            body: jsonEncode({'content': content}),
-          )
-          .timeout(const Duration(seconds: 15));
+      if (media == null) {
+        final response = await http
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json', 'Authorization': 'Token $token'},
+              body: jsonEncode({'content': content, 'sticker': sticker}),
+            )
+            .timeout(const Duration(seconds: 15));
+        return _handleMap(response);
+      }
+      final request = http.MultipartRequest('POST', uri)
+        ..headers['Authorization'] = 'Token $token'
+        ..fields['content'] = content
+        ..fields['sticker'] = sticker;
+      request.files.add(await http.MultipartFile.fromPath('media', media.path));
+      final streamed = await request.send().timeout(const Duration(minutes: 3));
+      final response = await http.Response.fromStream(streamed);
       return _handleMap(response);
     } on CommunityException {
       rethrow;
@@ -117,11 +133,50 @@ class CommunityService {
     }
   }
 
-  static Future<Map<String, dynamic>> sharePost(int postId) async {
+  /// React to a comment. Same emoji again removes it; a different one replaces it.
+  /// Returns the comment's updated reactions.
+  static Future<List<Map<String, dynamic>>> reactToComment(int commentId, String emoji) async {
+    final token = await _token();
+    final uri = Uri.parse('${AuthService.baseUrl}/api/community/comments/$commentId/react/');
+    try {
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Token $token'},
+            body: jsonEncode({'emoji': emoji}),
+          )
+          .timeout(const Duration(seconds: 15));
+      final body = _handleMap(response);
+      return List<Map<String, dynamic>>.from((body['reactions'] as List?) ?? const []);
+    } on CommunityException {
+      rethrow;
+    } catch (_) {
+      throw CommunityException('Could not reach the server.');
+    }
+  }
+
+  /// target: 'community' (repost, with an optional [comment]),
+  /// 'chat' (needs [conversationIds]) or 'contacts' (your emergency contacts).
+  static Future<Map<String, dynamic>> sharePost(
+    int postId, {
+    required String target,
+    String comment = '',
+    List<int> conversationIds = const [],
+  }) async {
     final token = await _token();
     final uri = Uri.parse('${AuthService.baseUrl}/api/community/posts/$postId/share/');
     try {
-      final response = await http.post(uri, headers: {'Authorization': 'Token $token'}).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json', 'Authorization': 'Token $token'},
+            body: jsonEncode({
+              'target': target,
+              if (comment.isNotEmpty) 'comment': comment,
+              if (conversationIds.isNotEmpty) 'conversation_ids': conversationIds,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
       return _handleMap(response);
     } on CommunityException {
       rethrow;

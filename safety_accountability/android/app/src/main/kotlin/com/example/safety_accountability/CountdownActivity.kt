@@ -61,6 +61,7 @@ class CountdownActivity : Activity() {
 
         deadline = intent.getLongExtra(QuickSosService.EXTRA_DEADLINE, System.currentTimeMillis() + 3000)
 
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(Color.parseColor("#B91C1C"))

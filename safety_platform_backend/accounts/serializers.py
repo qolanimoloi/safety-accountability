@@ -68,6 +68,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             "id", "full_name", "email", "phone_number",
             "profile_photo_url", "is_active_account", "date_joined_app",
+            "show_last_seen",
         ]
         read_only_fields = fields
 

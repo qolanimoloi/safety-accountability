@@ -5,6 +5,10 @@ def message_media_upload_path(instance, filename):
     return f"chat_media/{instance.message_id or 'new'}/{filename}"
 
 
+def conversation_icon_upload_path(instance, filename):
+    return f"chat_icons/{instance.pk or 'new'}/{filename}"
+
+
 class Conversation(models.Model):
     """
     Backs the Messages sheet in header.dart. A 1:1 chat is just a
@@ -17,6 +21,8 @@ class Conversation(models.Model):
 
     is_group = models.BooleanField(default=False)
     name = models.CharField(max_length=150, blank=True)  # only meaningful for groups
+    # Group picture. Empty means the app shows the default group icon.
+    icon = models.ImageField(upload_to=conversation_icon_upload_path, null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="conversations_created")
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, through="ConversationMembership", related_name="conversations")
 
@@ -58,6 +64,9 @@ class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="messages")
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="chat_messages")
     text = models.TextField(blank=True)
+    # A sticker is sent on its own (no text). It holds the sticker's key,
+    # for example "safe" or a single emoji; the app draws it big.
+    sticker = models.CharField(max_length=32, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -88,3 +97,19 @@ class MessageMedia(models.Model):
         if name.endswith((".m4a", ".aac", ".mp3", ".wav", ".ogg", ".opus", ".amr")):
             return "audio"
         return "file"
+
+
+class MessageReaction(models.Model):
+    """One emoji reaction per person per message (like WhatsApp)."""
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="reactions")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_reactions")
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("message", "user")
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.user_id} {self.emoji} on message {self.message_id}"
