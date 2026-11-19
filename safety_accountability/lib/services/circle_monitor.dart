@@ -77,8 +77,7 @@ class CircleMonitor {
       state.value = perm == LocationPermission.always ? CircleMonitorState.running : CircleMonitorState.foregroundOnly;
 
       _refreshTimer ??= Timer.periodic(const Duration(minutes: 15), (_) => ensureRunning(forceRefresh: true));
-      if (_sub == null) {
-        _sub = Geolocator.getPositionStream(locationSettings: _settings()).listen(
+      _sub ??= Geolocator.getPositionStream(locationSettings: _settings()).listen(
           (p) {
             _last = p;
             _evaluate();
@@ -86,7 +85,6 @@ class CircleMonitor {
           onError: (_) {},
           cancelOnError: false,
         );
-      }
       _tick ??= Timer.periodic(const Duration(minutes: 3), (_) => _periodicCheck());
       _periodicCheck();
     } finally {

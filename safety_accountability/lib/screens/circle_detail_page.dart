@@ -309,7 +309,7 @@ class _CircleDetailPageState extends State<CircleDetailPage> {
         child: Row(children: [
           if (icon != null) ...[Icon(icon, size: 19, color: const Color(0xFF667EEA)), const SizedBox(width: 8)],
           Expanded(child: Text(text, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
-          if (trailing != null) trailing,
+          ?trailing,
         ]),
       );
 

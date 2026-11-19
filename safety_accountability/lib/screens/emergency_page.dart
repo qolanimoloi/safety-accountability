@@ -601,9 +601,9 @@ class _IncomingAlertCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
-    final lat = (alert['latitude'] as num?)?.toDouble();
-    final lng = (alert['longitude'] as num?)?.toDouble();
-    final phone = alert['reporter_phone'] as String?;
+        final lat = double.tryParse('${alert['latitude'] ?? ''}');
+    final lng = double.tryParse('${alert['longitude'] ?? ''}');
+    final phone = alert['reporter_phone']?.toString();
     final name = alert['reporter_name']?.toString() ?? 'Someone';
 
     return Container(

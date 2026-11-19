@@ -108,7 +108,7 @@ class CirclesService {
       Map<String, dynamic>.from(await _send('POST', '/api/circles/', {
         'name': name,
         'kind': kind,
-        if (rulesMode != null) 'rules_mode': rulesMode,
+        'rules_mode': ?rulesMode,
       }) as Map);
 
   static Future<Map<String, dynamic>> get(int id) async =>

@@ -1168,7 +1168,7 @@ class _MessageBubble extends StatelessWidget {
           crossAxisAlignment: sent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (nameLabel != null) nameLabel,
+            ?nameLabel,
             StickerView(stickerKey: sticker, size: 130),
             Padding(padding: const EdgeInsets.only(top: 2), child: Text(timeText, style: const TextStyle(fontSize: 10, color: Colors.grey))),
           ],
@@ -1176,7 +1176,7 @@ class _MessageBubble extends StatelessWidget {
       );
     } else {
       final children = <Widget>[
-        if (nameLabel != null) nameLabel,
+        ?nameLabel,
         if (sticker.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 6), child: StickerView(stickerKey: sticker, size: 110)),
         for (final m in media)
           Padding(
