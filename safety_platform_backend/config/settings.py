@@ -49,6 +49,7 @@ CSRF_TRUSTED_ORIGINS = [
 # from the browser, so the browser needs permission (CORS) to do that.
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://[a-z0-9-]+\.netlify\.app$",
+    r"^https://qolanimoloi\.github\.io$",
     r"^http://localhost:\d+$",
     r"^http://127\.0\.0\.1:\d+$",
 ]
